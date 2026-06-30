@@ -36,3 +36,10 @@ default:
 components:
   flagd:
     sidecarContainers: []
+  load-generator:
+    # Crank traffic for demo visibility.
+    envOverrides:
+      - name: LOCUST_USERS
+        value: "100"
+      - name: LOCUST_SPAWN_RATE
+        value: "10"
