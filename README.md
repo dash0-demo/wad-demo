@@ -107,7 +107,11 @@ All in `deployment/terraform/variables.tf`:
 
 - **Disabled in `values.yaml`**: in-cluster Jaeger, Prometheus, Grafana, and
   OpenSearch (Dash0 is the only backend); the `flagd-ui` admin sidecar (it
-  OOMs at modest memory limits and isn't needed for telemetry).
+  OOMs at modest memory limits and isn't needed for telemetry); the
+  `hostMetrics` collector preset (Autopilot's Warden admission controller
+  forbids hostPath volumes outside `/var/log/`). kubeletMetrics +
+  kubernetesAttributes + clusterMetrics still give per-pod/per-container/
+  per-cluster metrics via the kubelet and k8s APIs.
 - **State**: stored in GCS bucket `${PROJECT_ID}-tf-state-wad-demo` with
   versioning enabled.
 - **Auth**: GitHub Actions impersonates the Terraform SA via Workload Identity

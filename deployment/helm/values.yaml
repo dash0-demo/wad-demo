@@ -27,6 +27,15 @@ components:
     sidecarContainers: []
 
 opentelemetry-collector:
+  # GKE Autopilot's Warden admission controller forbids hostPath volumes
+  # outside /var/log/. The chart's `hostMetrics` preset mounts host `/`,
+  # so disable it. kubeletMetrics + kubernetesAttributes + clusterMetrics
+  # still provide per-pod/per-container/per-cluster metrics through the
+  # kubelet and k8s APIs.
+  presets:
+    hostMetrics:
+      enabled: false
+
   extraEnvs:
     - name: DASH0_AUTH_TOKEN
       valueFrom:
