@@ -1,13 +1,14 @@
 # wad-demo
 
 Infrastructure-as-code for the **We Are Developers** demo: provisions a GKE
-Autopilot cluster, installs the OpenTelemetry demo via Helm, and ships all
-telemetry to a Dash0 dataset.
+Autopilot cluster, installs the Dash0 operator + the OpenTelemetry demo via
+Helm, and ships all telemetry to the `wad-demo` Dash0 dataset.
 
 ```
-GitHub Actions ──▶ Terraform ──▶ GKE Autopilot ──┬─▶ OTel demo workloads
-   (WIF auth)        (GCS state)                  │
-                                                  └─▶ otel-collector ─▶ Dash0 (wad-demo dataset)
+GitHub Actions ──▶ Terraform ──▶ GKE Autopilot ──┬─▶ Dash0 operator (dash0-system)
+   (WIF auth)        (GCS state)                  │     └─ OTel collectors ─▶ Dash0 (wad-demo)
+                                                  └─▶ OTel demo workloads (otel-demo)
+                                                        └─ SDK OTLP ─▶ operator's collector
 ```
 
 ## Layout
@@ -15,13 +16,14 @@ GitHub Actions ──▶ Terraform ──▶ GKE Autopilot ──┬─▶ OTel 
 ```
 deployment/
   helm/
-    values.yaml          # Dash0-only collector config; Jaeger/Prometheus/Grafana/OpenSearch disabled
+    values.yaml          # OTel demo values: bundled collector + UI backends disabled,
+                         # apps' OTEL_COLLECTOR_NAME redirected to operator's collector
   terraform/
     versions.tf
     backend.tf           # GCS backend, bucket configured at init
     providers.tf         # google, kubernetes, helm providers
     variables.tf
-    main.tf              # GKE Autopilot + namespace + dash0-auth Secret + helm_release
+    main.tf              # GKE Autopilot + dash0-system + Dash0 operator + Dash0Monitoring + otel-demo
     outputs.tf
     bootstrap.sh         # One-time GCS bucket + WIF + SA setup; idempotent
 .github/workflows/
@@ -92,26 +94,39 @@ namespace, then the GKE cluster.
 
 All in `deployment/terraform/variables.tf`:
 
-| Variable                  | Default                                     | Purpose                                     |
-| ------------------------- | ------------------------------------------- | ------------------------------------------- |
-| `project_id`              | _required_                                  | GCP project                                 |
-| `region`                  | `europe-west1`                              | Cluster region                              |
-| `cluster_name`            | `wad-demo`                                  | GKE cluster name                            |
-| `release_channel`         | `REGULAR`                                   | GKE release channel                         |
-| `otel_demo_chart_version` | `0.40.9`                                    | Helm chart version                          |
-| `dash0_auth_token`        | _required, sensitive_                       | Ingest token (env: `TF_VAR_dash0_auth_token`)|
-| `dash0_dataset`           | `wad-demo`                                  | Dash0 dataset technical id                  |
-| `dash0_otlp_endpoint`     | `https://ingress.eu-west-1.aws.dash0.com`   | Dash0 OTLP/HTTP ingress                     |
+| Variable                       | Default                                | Purpose                                                      |
+| ------------------------------ | -------------------------------------- | ------------------------------------------------------------ |
+| `project_id`                   | _required_                             | GCP project                                                  |
+| `region`                       | `europe-west1`                         | Cluster region                                               |
+| `cluster_name`                 | `wad-demo`                             | GKE cluster name                                             |
+| `release_channel`              | `REGULAR`                              | GKE release channel                                          |
+| `otel_demo_chart_version`      | `0.40.9`                               | OTel demo chart version                                      |
+| `dash0_operator_chart_version` | _empty (latest)_                       | Pin a specific operator chart version if needed              |
+| `dash0_auth_token`             | _required, sensitive_                  | Ingest token (env: `TF_VAR_dash0_auth_token`)                |
+| `dash0_dataset`                | `wad-demo`                             | Dash0 dataset technical id                                   |
+| `dash0_otlp_grpc_endpoint`     | `ingress.eu-west-1.aws.dash0.com:4317` | OTLP/gRPC endpoint used by the operator's collectors         |
+| `dash0_api_endpoint`           | `https://api.eu-west-1.aws.dash0.com`  | Dash0 API endpoint (for operator-side dashboards/views sync) |
 
 ## Notes
 
 - **Disabled in `values.yaml`**: in-cluster Jaeger, Prometheus, Grafana, and
   OpenSearch (Dash0 is the only backend); the `flagd-ui` admin sidecar (it
-  OOMs at modest memory limits and isn't needed for telemetry); the
-  `hostMetrics` collector preset (Autopilot's Warden admission controller
-  forbids hostPath volumes outside `/var/log/`). kubeletMetrics +
-  kubernetesAttributes + clusterMetrics still give per-pod/per-container/
-  per-cluster metrics via the kubelet and k8s APIs.
+  OOMs at modest memory limits and isn't needed for telemetry); the demo
+  chart's bundled `opentelemetry-collector` (the Dash0 operator deploys and
+  configures its own collectors, which are Autopilot-friendly out of the box).
+- **`OTEL_COLLECTOR_NAME` override**: the demo apps' chart defaults
+  `OTEL_EXPORTER_OTLP_ENDPOINT` to `http://$(OTEL_COLLECTOR_NAME):4318`. We
+  set `OTEL_COLLECTOR_NAME` via `default.envOverrides` to the operator's
+  DaemonSet collector Service so SDK telemetry lands in the operator's
+  pipeline.
+- **Auto-namespace monitoring with `instrumentWorkloads.mode=none`**: the
+  operator chart is installed with `operator.autoMonitorNamespaces.enabled=true`
+  and its default monitoring template's `instrumentWorkloads.mode` set to
+  `none`. Every non-system namespace gets a `Dash0Monitoring` resource
+  automatically, but the operator's `LD_PRELOAD` auto-instrumentation is
+  disabled — the demo apps already carry their own OpenTelemetry SDKs and
+  double-instrumentation would conflict. Logs, k8s events, and cluster
+  metrics still flow from the operator's own collectors.
 - **State**: stored in GCS bucket `${PROJECT_ID}-tf-state-wad-demo` with
   versioning enabled.
 - **Auth**: GitHub Actions impersonates the Terraform SA via Workload Identity

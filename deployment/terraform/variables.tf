@@ -27,6 +27,12 @@ variable "otel_demo_chart_version" {
   default     = "0.40.9"
 }
 
+variable "dash0_operator_chart_version" {
+  description = "Version of the dash0-operator/dash0-operator Helm chart. Leave empty to use the latest published."
+  type        = string
+  default     = ""
+}
+
 variable "dash0_auth_token" {
   description = "Dash0 ingest auth token. Provide via TF_VAR_dash0_auth_token / GH Actions secret."
   type        = string
@@ -39,8 +45,14 @@ variable "dash0_dataset" {
   default     = "wad-demo"
 }
 
-variable "dash0_otlp_endpoint" {
-  description = "Dash0 OTLP/HTTP ingress endpoint."
+variable "dash0_otlp_grpc_endpoint" {
+  description = "Dash0 OTLP/gRPC ingress endpoint used by the operator's collectors. Format: host:port (no scheme)."
   type        = string
-  default     = "https://ingress.eu-west-1.aws.dash0.com"
+  default     = "ingress.eu-west-1.aws.dash0.com:4317"
+}
+
+variable "dash0_api_endpoint" {
+  description = "Dash0 API endpoint used by the operator for resource synchronization (dashboards, views, etc.)."
+  type        = string
+  default     = "https://api.eu-west-1.aws.dash0.com"
 }

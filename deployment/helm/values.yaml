@@ -1,17 +1,17 @@
-# Helm values for the OpenTelemetry demo with all telemetry exported to Dash0.
+# Helm values for the OpenTelemetry demo when paired with the Dash0 operator.
 # Tested against chart open-telemetry/opentelemetry-demo 0.40.9 (appVersion 2.2.0).
 #
-# Local UI backends (Jaeger, Prometheus, Grafana, OpenSearch) are disabled — Dash0
-# is the only destination. The flagd-ui admin sidecar is also disabled because it
-# has been observed OOMing under modest memory limits.
+# The bundled opentelemetry-collector subchart is disabled — the Dash0 operator
+# deploys and configures its own collectors. The demo apps' OpenTelemetry SDKs
+# are redirected to the operator's collector service via OTEL_COLLECTOR_NAME.
 #
-# The collector reads its Dash0 endpoint / dataset / auth token from a Secret
-# named `dash0-auth` in the `otel-demo` namespace. Terraform manages this Secret
-# when applied via deployment/terraform; for manual installs, create it with:
-#   kubectl -n otel-demo create secret generic dash0-auth \
-#     --from-literal=token=<DASH0_AUTH_TOKEN> \
-#     --from-literal=dataset=wad-demo \
-#     --from-literal=endpoint=https://ingress.eu-west-1.aws.dash0.com
+# Sibling resources managed by Terraform:
+#   - dash0-operator (Helm release in `dash0-system`)
+#   - Dash0OperatorConfiguration (auto-created by the operator chart when
+#     `operator.dash0Export.enabled=true`)
+#   - Dash0Monitoring (in `otel-demo`, with instrumentWorkloads.mode=none so
+#     the operator's LD_PRELOAD injector does not double-instrument apps that
+#     already carry their own OpenTelemetry SDK)
 
 jaeger:
   enabled: false
@@ -22,99 +22,17 @@ grafana:
 opensearch:
   enabled: false
 
+opentelemetry-collector:
+  enabled: false
+
+default:
+  envOverrides:
+    # Override the value baked into the chart (defaults to "otel-collector",
+    # which was the Service name of the bundled collector). Point the demo apps
+    # at the operator's DaemonSet collector instead.
+    - name: OTEL_COLLECTOR_NAME
+      value: dash0-operator-opentelemetry-collector-service.dash0-system.svc.cluster.local
+
 components:
   flagd:
     sidecarContainers: []
-
-opentelemetry-collector:
-  # GKE Autopilot's Warden admission controller forbids hostPath volumes
-  # outside /var/log/. The chart's `hostMetrics` preset mounts host `/`,
-  # so disable it. kubeletMetrics + kubernetesAttributes + clusterMetrics
-  # still provide per-pod/per-container/per-cluster metrics through the
-  # kubelet and k8s APIs.
-  presets:
-    hostMetrics:
-      enabled: false
-
-  extraEnvs:
-    - name: DASH0_AUTH_TOKEN
-      valueFrom:
-        secretKeyRef:
-          name: dash0-auth
-          key: token
-    - name: DASH0_DATASET
-      valueFrom:
-        secretKeyRef:
-          name: dash0-auth
-          key: dataset
-    - name: DASH0_OTLP_ENDPOINT
-      valueFrom:
-        secretKeyRef:
-          name: dash0-auth
-          key: endpoint
-  config:
-    receivers:
-      otlp:
-        protocols:
-          http:
-            cors:
-              allowed_origins:
-                - "http://*"
-                - "https://*"
-      kafkametrics:
-        scrapers:
-          - brokers
-          - topics
-          - consumers
-        brokers:
-          - kafka:9092
-        collection_interval: 10s
-    exporters:
-      otlp/jaeger: null
-      otlphttp/prometheus: null
-      opensearch: null
-      otlphttp/dash0:
-        endpoint: ${env:DASH0_OTLP_ENDPOINT}
-        headers:
-          Authorization: "Bearer ${env:DASH0_AUTH_TOKEN}"
-          Dash0-Dataset: "${env:DASH0_DATASET}"
-        sending_queue:
-          batch: {}
-    processors:
-      memory_limiter:
-        check_interval: 5s
-        limit_percentage: 80
-        spike_limit_percentage: 25
-      resourcedetection:
-        detectors: [env, system]
-      resource:
-        attributes:
-          - key: service.instance.id
-            from_attribute: k8s.pod.uid
-            action: insert
-    connectors:
-      spanmetrics: {}
-    service:
-      pipelines:
-        traces:
-          processors: [memory_limiter, resourcedetection, resource, batch]
-          exporters: [otlphttp/dash0, spanmetrics]
-        metrics:
-          receivers: [otlp, kafkametrics, spanmetrics]
-          processors: [memory_limiter, resourcedetection, resource, batch]
-          exporters: [otlphttp/dash0]
-        logs:
-          processors: [memory_limiter, resourcedetection, resource, batch]
-          exporters: [otlphttp/dash0]
-      telemetry:
-        metrics:
-          level: detailed
-          readers:
-            - periodic:
-                interval: 10000
-                timeout: 5000
-                exporter:
-                  otlp:
-                    protocol: http/protobuf
-                    endpoint: http://otel-collector:4318
-                    insecure: true
