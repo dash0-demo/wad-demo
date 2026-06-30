@@ -121,12 +121,18 @@ All in `deployment/terraform/variables.tf`:
   pipeline.
 - **Auto-namespace monitoring with `instrumentWorkloads.mode=none`**: the
   operator chart is installed with `operator.autoMonitorNamespaces.enabled=true`
-  and its default monitoring template's `instrumentWorkloads.mode` set to
-  `none`. Every non-system namespace gets a `Dash0Monitoring` resource
+  and its top-level `operator.monitoringTemplate.spec.instrumentWorkloads.mode`
+  set to `none`. Every non-system namespace gets a `Dash0Monitoring` resource
   automatically, but the operator's `LD_PRELOAD` auto-instrumentation is
   disabled — the demo apps already carry their own OpenTelemetry SDKs and
   double-instrumentation would conflict. Logs, k8s events, and cluster
   metrics still flow from the operator's own collectors.
+- **`operator.gke.autopilot.enabled=true`**: deploys an `AllowlistSynchronizer`
+  so Autopilot's Warden permits the operator's pods (which use custom node
+  affinities and other features outside Autopilot's default allow-list).
+  Side effect: kubeletstats utilization metrics (`k8s.pod.cpu_limit_utilization`
+  and siblings) are not collected — Autopilot withholds the `nodes/proxy`
+  permission needed for the kubelet `/pod` endpoint.
 - **State**: stored in GCS bucket `${PROJECT_ID}-tf-state-wad-demo` with
   versioning enabled.
 - **Auth**: GitHub Actions impersonates the Terraform SA via Workload Identity

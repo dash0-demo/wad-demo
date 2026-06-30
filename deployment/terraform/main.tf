@@ -41,6 +41,14 @@ resource "helm_release" "dash0_operator" {
 
   timeout = 600
 
+  # GKE Autopilot allow-list synchronizer: lets the operator's pods carry
+  # the custom node-affinity keys (dash0.com/enable) and other privileged
+  # bits that Autopilot's Warden would otherwise reject.
+  set {
+    name  = "operator.gke.autopilot.enabled"
+    value = "true"
+  }
+
   set {
     name  = "operator.dash0Export.enabled"
     value = "true"
