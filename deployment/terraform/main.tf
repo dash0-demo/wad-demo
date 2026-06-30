@@ -77,7 +77,9 @@ resource "helm_release" "dash0_operator" {
     value = "true"
   }
   set {
-    name  = "operator.autoMonitorNamespaces.monitoringTemplate.spec.instrumentWorkloads.mode"
+    # The monitoring template is a top-level operator setting (the chart
+    # rejects placing it under autoMonitorNamespaces).
+    name  = "operator.monitoringTemplate.spec.instrumentWorkloads.mode"
     value = "none"
   }
 
