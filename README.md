@@ -41,7 +41,7 @@ Creates the Terraform state bucket, the Terraform service account, and the
 Workload Identity Federation binding for this GitHub repository:
 
 ```sh
-PROJECT_ID=dash0-devrel \
+PROJECT_ID=we-are-developers-501011 \
 REGION=europe-west1 \
 GITHUB_REPO=dash0-demo/wad-demo \
   ./deployment/terraform/bootstrap.sh
@@ -50,14 +50,14 @@ GITHUB_REPO=dash0-demo/wad-demo \
 The script is idempotent. It prints, at the end, the values to register in the
 GitHub repo under **Settings → Secrets and variables → Actions**:
 
-| Kind     | Name                  | Value                                                |
-| -------- | --------------------- | ---------------------------------------------------- |
-| Variable | `GCP_PROJECT_ID`      | `dash0-devrel`                                       |
-| Variable | `GCP_REGION`          | `europe-west1`                                       |
-| Variable | `TF_STATE_BUCKET`     | `dash0-devrel-tf-state-wad-demo`                     |
-| Variable | `WIF_PROVIDER`        | `projects/.../providers/wad-demo` (printed by script)|
-| Variable | `WIF_SERVICE_ACCOUNT` | `wad-demo-tf@dash0-devrel.iam.gserviceaccount.com`   |
-| Secret   | `DASH0_AUTH_TOKEN`    | the ingest token for the `wad-demo` dataset         |
+| Kind     | Name                  | Value (example, for the `we-are-developers-501011` project)                                              |
+| -------- | --------------------- | -------------------------------------------------------------------------------------------------------- |
+| Variable | `GCP_PROJECT_ID`      | `we-are-developers-501011`                                                                               |
+| Variable | `GCP_REGION`          | `europe-west1`                                                                                           |
+| Variable | `TF_STATE_BUCKET`     | `we-are-developers-501011-tf-state-wad-demo`                                                             |
+| Variable | `WIF_PROVIDER`        | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github-actions/providers/wad-demo`     |
+| Variable | `WIF_SERVICE_ACCOUNT` | `wad-demo-tf@we-are-developers-501011.iam.gserviceaccount.com`                                           |
+| Secret   | `DASH0_AUTH_TOKEN`    | the ingest token for the `wad-demo` dataset                                                              |
 
 ## Deploy
 

@@ -46,10 +46,20 @@ if ! gcloud iam service-accounts describe "${SA_EMAIL}" >/dev/null 2>&1; then
     --display-name="WAD demo Terraform"
 fi
 for role in roles/container.admin roles/iam.serviceAccountUser roles/compute.networkAdmin roles/storage.admin; do
-  gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
-    --member="serviceAccount:${SA_EMAIL}" \
-    --role="${role}" \
-    --condition=None >/dev/null
+  # Retry to absorb IAM propagation delay after a fresh service account.
+  for attempt in 1 2 3 4 5; do
+    if gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+         --member="serviceAccount:${SA_EMAIL}" \
+         --role="${role}" \
+         --condition=None >/dev/null 2>&1; then
+      break
+    fi
+    if [ "${attempt}" -eq 5 ]; then
+      echo "Failed to bind ${role} to ${SA_EMAIL} after ${attempt} attempts" >&2
+      exit 1
+    fi
+    sleep $((attempt * 5))
+  done
 done
 
 echo "[4/5] Ensuring Workload Identity pool & provider for ${GITHUB_REPO}"
@@ -76,12 +86,12 @@ gcloud iam service-accounts add-iam-policy-binding "${SA_EMAIL}" \
 
 echo "[5/5] Done"
 echo
-echo "Set these as GitHub Actions repository variables (Settings → Variables → Actions):"
+echo "Set these as GitHub Actions repository variables (Settings → Secrets and variables → Actions → Variables):"
 echo "  GCP_PROJECT_ID:        ${PROJECT_ID}"
 echo "  GCP_REGION:            ${REGION}"
 echo "  TF_STATE_BUCKET:       ${STATE_BUCKET}"
 echo "  WIF_PROVIDER:          ${POOL_FULL}/providers/${PROVIDER_ID}"
 echo "  WIF_SERVICE_ACCOUNT:   ${SA_EMAIL}"
 echo
-echo "And this as a GitHub Actions repository secret (Settings → Secrets → Actions):"
+echo "And this as a GitHub Actions repository secret (Settings → Secrets and variables → Actions → Secrets):"
 echo "  DASH0_AUTH_TOKEN:      <wad-demo Dash0 ingest token>"
