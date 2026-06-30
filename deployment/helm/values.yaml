@@ -37,9 +37,13 @@ components:
   flagd:
     sidecarContainers: []
   load-generator:
-    # Crank traffic for demo visibility.
+    # Crank traffic for demo visibility. 100 users with the chart default
+    # (LOCUST_BROWSER_TRAFFIC_ENABLED=true) OOMs the pod at ~1.5Gi, so use
+    # plain HTTP load only.
     envOverrides:
       - name: LOCUST_USERS
-        value: "100"
+        value: "50"
       - name: LOCUST_SPAWN_RATE
         value: "10"
+      - name: LOCUST_BROWSER_TRAFFIC_ENABLED
+        value: "false"
