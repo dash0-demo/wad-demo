@@ -14,5 +14,9 @@ terraform {
       source  = "hashicorp/helm"
       version = "~> 2.15"
     }
+    dash0 = {
+      source  = "dash0hq/dash0"
+      version = "~> 1.6.0"
+    }
   }
 }
