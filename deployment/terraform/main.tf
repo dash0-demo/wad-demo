@@ -32,6 +32,53 @@ resource "kubernetes_secret" "dash0_authorization" {
   }
 }
 
+data "external" "git_head" {
+  # Read the currently checked-out commit so it can be tagged onto every
+  # telemetry signal via vcs.ref.head.revision. Works locally and in CI
+  # (actions/checkout@v4 leaves HEAD pointed at the deployed commit).
+  program     = ["sh", "-c", "printf '{\"sha\":\"%s\"}' \"$(git rev-parse HEAD)\""]
+  working_dir = path.module
+}
+
+locals {
+  # OTTL statements injected via the operator's monitoring template. They set
+  # the OTel VCS resource attributes on every span/metric/log so Agent0 can
+  # locate this repo, know which commit was deployed, and open PRs against it.
+  vcs_ottl_statements = [
+    "set(attributes[\"vcs.repository.url.full\"], \"${var.github_repo_url}\")",
+    "set(attributes[\"vcs.ref.head.revision\"], \"${data.external.git_head.result.sha}\")",
+    "set(attributes[\"vcs.provider.name\"], \"github\")",
+  ]
+
+  dash0_operator_values = yamlencode({
+    operator = {
+      # The demo apps already carry their own OpenTelemetry SDKs, so keep the
+      # default monitoring template's LD_PRELOAD injector off. Also inject the
+      # VCS attributes via the built-in transform processor.
+      monitoringTemplate = {
+        spec = {
+          instrumentWorkloads = { mode = "none" }
+          transform = {
+            error_mode = "ignore"
+            trace_statements = [{
+              context    = "resource"
+              statements = local.vcs_ottl_statements
+            }]
+            metric_statements = [{
+              context    = "resource"
+              statements = local.vcs_ottl_statements
+            }]
+            log_statements = [{
+              context    = "resource"
+              statements = local.vcs_ottl_statements
+            }]
+          }
+        }
+      }
+    }
+  })
+}
+
 resource "helm_release" "dash0_operator" {
   name       = "dash0-operator"
   namespace  = kubernetes_namespace.dash0_system.metadata[0].name
@@ -40,6 +87,8 @@ resource "helm_release" "dash0_operator" {
   version    = var.dash0_operator_chart_version != "" ? var.dash0_operator_chart_version : null
 
   timeout = 600
+
+  values = [local.dash0_operator_values]
 
   # GKE Autopilot allow-list synchronizer: lets the operator's pods carry
   # the custom node-affinity keys (dash0.com/enable) and other privileged
@@ -76,19 +125,10 @@ resource "helm_release" "dash0_operator" {
 
   # Auto-monitor every non-system namespace. The default label selector
   # ("dash0.com/enable!=false") matches everything that isn't explicitly opted
-  # out. The demo apps already carry their own OpenTelemetry SDKs, so we set
-  # the default monitoring template's instrumentWorkloads.mode to "none" to
-  # skip the operator's LD_PRELOAD auto-instrumentation and avoid double
-  # instrumentation. Logs, k8s events, and cluster metrics still flow.
+  # out.
   set {
     name  = "operator.autoMonitorNamespaces.enabled"
     value = "true"
-  }
-  set {
-    # The monitoring template is a top-level operator setting (the chart
-    # rejects placing it under autoMonitorNamespaces).
-    name  = "operator.monitoringTemplate.spec.instrumentWorkloads.mode"
-    value = "none"
   }
 
   depends_on = [kubernetes_secret.dash0_authorization]

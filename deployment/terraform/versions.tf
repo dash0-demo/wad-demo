@@ -18,5 +18,9 @@ terraform {
       source  = "dash0hq/dash0"
       version = "~> 1.6.0"
     }
+    external = {
+      source  = "hashicorp/external"
+      version = "~> 2.3"
+    }
   }
 }
