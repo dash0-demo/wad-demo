@@ -1,0 +1,24 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: product-catalog-latency
+spec:
+  groups:
+    - name: Alerting
+      interval: 1m0s
+      rules:
+        - alert: 'product-catalog: High p95 Latency'
+          expr: 'max by (service_namespace, service_name) (histogram_quantile(0.95, sum by(le) (rate({otel_metric_name="dash0.spans.duration", service_name="product-catalog"}[5m])))) > $__threshold'
+          for: 2m0s
+          keep_firing_for: 0s
+          annotations:
+            summary: p95 latency on product-catalog is elevated
+            description: >-
+              The 95th-percentile span duration for product-catalog has exceeded
+              the threshold over a 5-minute window. Degraded fires at 6s (normal
+              peak is ~4.65s), Critical fires at 10s (~2x normal). Investigate
+              slow operations, database queries, or upstream dependency latency.
+            dash0-threshold-degraded: "0.5"
+            dash0-threshold-critical: "1"
+            dash0-enabled: "true"
+          labels: {}

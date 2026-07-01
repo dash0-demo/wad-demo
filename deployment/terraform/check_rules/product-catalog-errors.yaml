@@ -1,0 +1,24 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: product-catalog-errors
+spec:
+  groups:
+    - name: Alerting
+      interval: 1m0s
+      rules:
+        - alert: 'product-catalog: High Error Rate'
+          expr: '100 * sum by (service_namespace, service_name) (rate({otel_metric_name="dash0.spans", otel_span_status_code="ERROR", service_name="product-catalog"}[5m])) / sum by (service_namespace, service_name) (rate({otel_metric_name="dash0.spans", service_name="product-catalog"}[5m])) > $__threshold'
+          for: 2m0s
+          keep_firing_for: 0s
+          annotations:
+            summary: Error rate on product-catalog is elevated
+            description: >-
+              The percentage of error spans from product-catalog has exceeded
+              the threshold over a 5-minute window. Degraded fires at 0.1%
+              (about 4x the normal peak), Critical fires at 0.5%. Investigate
+              recent deployments, downstream dependencies, or request patterns.
+            dash0-threshold-degraded: "0.1"
+            dash0-threshold-critical: "0.5"
+            dash0-enabled: "true"
+          labels: {}
