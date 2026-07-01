@@ -89,7 +89,76 @@ jobs:
         run: exit 1
 
       - name: terraform apply
+        id: apply
         if: |
           (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
           (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
         run: terraform apply -auto-approve tfplan
+
+  # Fan out a dash0.deployment event per demo service (matching what the
+  # otel-demo Helm chart deploys into `otel-demo`, plus the Dash0 operator
+  # components in `dash0-operator`). Each event carries the service's own
+  # service.name (and service.namespace where applicable) plus the VCS
+  # attributes stamped on all telemetry, so Dash0/Agent0 can correlate an
+  # alert on any single service with the exact commit that was deployed.
+  dash0-deploy-events:
+    needs: terraform
+    if: |
+      always() && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      )
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          # otel-demo application services (service.namespace unset)
+          - { name: accounting,       namespace: "" }
+          - { name: ad,               namespace: "" }
+          - { name: cart,             namespace: "" }
+          - { name: checkout,         namespace: "" }
+          - { name: currency,         namespace: "" }
+          - { name: email,            namespace: "" }
+          - { name: flagd,            namespace: "" }
+          - { name: fraud-detection,  namespace: "" }
+          - { name: frontend,         namespace: "" }
+          - { name: frontend-proxy,   namespace: "" }
+          - { name: kafka,            namespace: "" }
+          - { name: llm,              namespace: "" }
+          - { name: load-generator,   namespace: "" }
+          - { name: payment,          namespace: "" }
+          - { name: postgresql,       namespace: "" }
+          - { name: product-catalog,  namespace: "" }
+          - { name: product-reviews,  namespace: "" }
+          - { name: quote,            namespace: "" }
+          - { name: recommendation,   namespace: "" }
+          - { name: shipping,         namespace: "" }
+          - { name: valkey-cart,      namespace: "" }
+          # Dash0 operator components
+          - { name: dash0-operator-collector, namespace: dash0-operator }
+          - { name: operator-manager,         namespace: dash0-operator }
+    steps:
+      - name: send dash0.deployment event
+        uses: dash0hq/dash0-cli/.github/actions/send-log-event@main
+        with:
+          otlp-url: ${{ vars.DASH0_OTLP_URL }}
+          auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
+          dataset: wad-demo
+          event-name: dash0.deployment
+          body: "${{ matrix.service.name }} terraform apply ${{ needs.terraform.result == 'success' && 'succeeded' || 'failed' }}"
+          severity-number: ${{ needs.terraform.result == 'success' && '9' || '17' }}
+          severity-text: ${{ needs.terraform.result == 'success' && 'INFO' || 'ERROR' }}
+          service-name: ${{ matrix.service.name }}
+          service-namespace: ${{ matrix.service.namespace }}
+          deployment-name: wad-demo
+          deployment-id: ${{ github.run_id }}
+          deployment-status: ${{ needs.terraform.result == 'success' && 'succeeded' || 'failed' }}
+          vcs-repository-url: ${{ github.server_url }}/${{ github.repository }}
+          vcs-ref-head-revision: ${{ github.sha }}
+          vcs-ref-head-name: ${{ github.ref_name }}
+          other-log-attributes: |
+            github.workflow=${{ github.workflow }}
+            github.run_id=${{ github.run_id }}
+            github.run_attempt=${{ github.run_attempt }}
+            github.actor=${{ github.actor }}

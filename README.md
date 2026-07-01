@@ -111,6 +111,20 @@ All in `deployment/terraform/variables.tf`:
 
 ## Notes
 
+- **Deployment events**: on every apply against `main`, the `dash0-deploy-events`
+  matrix job fans out one `dash0.deployment` log event per demo service (all
+  otel-demo application services + the Dash0 operator components) via the
+  [`dash0hq/dash0-cli/.github/actions/send-log-event`](https://github.com/dash0hq/dash0-cli/tree/main/.github/actions/send-log-event)
+  action. Status is `succeeded` when the `terraform` job succeeds, `failed`
+  otherwise. Each event carries the service's own `service.name` (and
+  `service.namespace` where the running service sets one — currently only the
+  `dash0-operator` components) plus the `vcs.repository.url.full` /
+  `vcs.ref.head.revision` / `vcs.ref.head.name` attributes the operator stamps
+  on all runtime telemetry — so a per-service alert like the product-catalog
+  error-rate check rule can be correlated with the exact commit whose apply
+  produced it. The OTLP HTTP endpoint comes from the `DASH0_OTLP_URL` GitHub
+  Actions variable (set at organization level; override at repo level to point
+  at a different tenant).
 - **Disabled in `values.yaml`**: in-cluster Jaeger, Prometheus, Grafana, and
   OpenSearch (Dash0 is the only backend); the `flagd-ui` admin sidecar (it
   OOMs at modest memory limits and isn't needed for telemetry); the demo
