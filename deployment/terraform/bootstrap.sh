@@ -93,5 +93,6 @@ echo "  TF_STATE_BUCKET:       ${STATE_BUCKET}"
 echo "  WIF_PROVIDER:          ${POOL_FULL}/providers/${PROVIDER_ID}"
 echo "  WIF_SERVICE_ACCOUNT:   ${SA_EMAIL}"
 echo
-echo "And this as a GitHub Actions repository secret (Settings → Secrets and variables → Actions → Secrets):"
+echo "And these as GitHub Actions repository secrets (Settings → Secrets and variables → Actions → Secrets):"
 echo "  DASH0_AUTH_TOKEN:      <wad-demo Dash0 ingest token>"
+echo "  DASH0_API_TOKEN:       <wad-demo Dash0 management API token (check_rules:write etc.)>"

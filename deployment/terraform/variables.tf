@@ -34,7 +34,13 @@ variable "dash0_operator_chart_version" {
 }
 
 variable "dash0_auth_token" {
-  description = "Dash0 ingest auth token. Provide via TF_VAR_dash0_auth_token / GH Actions secret."
+  description = "Dash0 ingest auth token used by the operator's collectors. Provide via TF_VAR_dash0_auth_token / GH Actions secret."
+  type        = string
+  sensitive   = true
+}
+
+variable "dash0_api_token" {
+  description = "Dash0 management API token used by the dash0 Terraform provider (needs write permissions on check rules, dashboards, etc.). Provide via TF_VAR_dash0_api_token / GH Actions secret."
   type        = string
   sensitive   = true
 }

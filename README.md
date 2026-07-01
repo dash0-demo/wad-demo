@@ -59,7 +59,8 @@ GitHub repo under **Settings → Secrets and variables → Actions**:
 | Variable | `TF_STATE_BUCKET`     | `we-are-developers-501011-tf-state-wad-demo`                                                             |
 | Variable | `WIF_PROVIDER`        | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github-actions/providers/wad-demo`     |
 | Variable | `WIF_SERVICE_ACCOUNT` | `wad-demo-tf@we-are-developers-501011.iam.gserviceaccount.com`                                           |
-| Secret   | `DASH0_AUTH_TOKEN`    | the ingest token for the `wad-demo` dataset                                                              |
+| Secret   | `DASH0_AUTH_TOKEN`    | ingest token for the `wad-demo` dataset (used by the operator's collectors)                              |
+| Secret   | `DASH0_API_TOKEN`     | management API token for the `wad-demo` tenant (used by the dash0 Terraform provider)                    |
 
 ## Deploy
 
@@ -74,7 +75,7 @@ cd deployment/terraform
 terraform init \
   -backend-config="bucket=dash0-devrel-tf-state-wad-demo" \
   -backend-config="prefix=wad-demo/gke"
-TF_VAR_dash0_auth_token=<token> terraform apply
+TF_VAR_dash0_auth_token=<ingest-token> TF_VAR_dash0_api_token=<api-token> terraform apply
 ```
 
 After apply, point `kubectl` at the cluster with the command printed in the
@@ -84,7 +85,7 @@ Terraform outputs (`get_credentials_command`).
 
 ```sh
 cd deployment/terraform
-TF_VAR_dash0_auth_token=<token> terraform destroy
+TF_VAR_dash0_auth_token=<ingest-token> TF_VAR_dash0_api_token=<api-token> terraform destroy
 ```
 
 `helm_release` is removed first (along with the demo workloads), then the
@@ -102,7 +103,8 @@ All in `deployment/terraform/variables.tf`:
 | `release_channel`              | `REGULAR`                              | GKE release channel                                          |
 | `otel_demo_chart_version`      | `0.40.9`                               | OTel demo chart version                                      |
 | `dash0_operator_chart_version` | _empty (latest)_                       | Pin a specific operator chart version if needed              |
-| `dash0_auth_token`             | _required, sensitive_                  | Ingest token (env: `TF_VAR_dash0_auth_token`)                |
+| `dash0_auth_token`             | _required, sensitive_                  | Ingest token used by the operator (env: `TF_VAR_dash0_auth_token`) |
+| `dash0_api_token`              | _required, sensitive_                  | Management API token used by the dash0 provider (env: `TF_VAR_dash0_api_token`) |
 | `dash0_dataset`                | `wad-demo`                             | Dash0 dataset technical id                                   |
 | `dash0_otlp_grpc_endpoint`     | `ingress.eu-west-1.aws.dash0.com:4317` | OTLP/gRPC endpoint used by the operator's collectors         |
 | `dash0_api_endpoint`           | `https://api.eu-west-1.aws.dash0.com`  | Dash0 API endpoint (for operator-side dashboards/views sync) |

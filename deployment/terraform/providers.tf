@@ -21,5 +21,5 @@ provider "helm" {
 
 provider "dash0" {
   url        = var.dash0_api_endpoint
-  auth_token = var.dash0_auth_token
+  auth_token = var.dash0_api_token
 }
