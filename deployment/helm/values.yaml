@@ -36,6 +36,130 @@ default:
 components:
   flagd:
     sidecarContainers: []
+    # Override the chart's bundled flagd-config ConfigMap with a patched version
+    # that keeps productCatalogFailure disabled (targeting always returns "off").
+    #
+    # How it works:
+    #   1. mountedConfigMaps creates ConfigMap "flagd-fixed-config" from the data
+    #      below and mounts it at /etc/flagd-src (an unused path — only the
+    #      ConfigMap resource creation matters here).
+    #   2. additionalVolumes replaces the chart-default config-ro volume so it
+    #      points at "flagd-fixed-config" instead of the chart's "flagd-config".
+    #   3. The flagd initContainer copies /config-ro/demo.flagd.json →
+    #      /config-rw/demo.flagd.json, so flagd picks up our corrected flags.
+    mountedConfigMaps:
+      - name: fixed-config
+        mountPath: /etc/flagd-src
+        data:
+          demo.flagd.json: |
+            {
+              "$schema": "https://flagd.dev/schema/v0/flags.json",
+              "flags": {
+                "productCatalogFailure": {
+                  "description": "Fail product catalog service on a specific product",
+                  "state": "ENABLED",
+                  "variants": {
+                    "on": true,
+                    "off": false
+                  },
+                  "defaultVariant": "off",
+                  "targeting": {
+                    "if": [
+                      {
+                        "==": [{"var": "product_id"}, "OLJCESPC7Z"]
+                      },
+                      "off",
+                      "off"
+                    ]
+                  }
+                },
+                "recommendationCacheFailure": {
+                  "description": "Fail recommendation service cache",
+                  "state": "ENABLED",
+                  "variants": {"on": true, "off": false},
+                  "defaultVariant": "off"
+                },
+                "adManualGc": {
+                  "description": "Triggers full manual garbage collections in the ad service",
+                  "state": "ENABLED",
+                  "variants": {"on": true, "off": false},
+                  "defaultVariant": "off"
+                },
+                "adHighCpu": {
+                  "description": "Triggers high cpu load in the ad service",
+                  "state": "ENABLED",
+                  "variants": {"on": true, "off": false},
+                  "defaultVariant": "off"
+                },
+                "adFailure": {
+                  "description": "Fail ad service",
+                  "state": "ENABLED",
+                  "variants": {"on": true, "off": false},
+                  "defaultVariant": "off"
+                },
+                "kafkaQueueProblems": {
+                  "description": "Overloads Kafka queue while simultaneously introducing a consumer side delay leading to a lag spike",
+                  "state": "ENABLED",
+                  "variants": {"on": 100, "off": 0},
+                  "defaultVariant": "off"
+                },
+                "cartFailure": {
+                  "description": "Fail cart service",
+                  "state": "ENABLED",
+                  "variants": {"on": true, "off": false},
+                  "defaultVariant": "off"
+                },
+                "paymentFailure": {
+                  "description": "Fail payment service charge requests n%",
+                  "state": "ENABLED",
+                  "variants": {
+                    "100%": 1, "90%": 0.95, "75%": 0.75,
+                    "50%": 0.5, "25%": 0.25, "10%": 0.1, "off": 0
+                  },
+                  "defaultVariant": "off"
+                },
+                "paymentUnreachable": {
+                  "description": "Payment service is unavailable",
+                  "state": "ENABLED",
+                  "variants": {"on": true, "off": false},
+                  "defaultVariant": "off"
+                },
+                "loadGeneratorFloodHomepage": {
+                  "description": "Flood the frontend with a large amount of requests.",
+                  "state": "ENABLED",
+                  "variants": {"on": 100, "off": 0},
+                  "defaultVariant": "off"
+                },
+                "imageSlowLoad": {
+                  "description": "slow loading images in the frontend",
+                  "state": "ENABLED",
+                  "variants": {"10sec": 10000, "5sec": 5000, "off": 0},
+                  "defaultVariant": "off"
+                },
+                "failedReadinessProbe": {
+                  "description": "readiness probe failure for cart service",
+                  "state": "ENABLED",
+                  "variants": {"on": true, "off": false},
+                  "defaultVariant": "off"
+                },
+                "emailMemoryLeak": {
+                  "description": "Memory leak in the email service.",
+                  "state": "ENABLED",
+                  "variants": {"off": 0, "1x": 1, "10x": 10, "100x": 100, "1000x": 1000, "10000x": 10000},
+                  "defaultVariant": "off"
+                },
+                "intlShippingSlowdown": {
+                  "description": "Delays international shipping responses to simulate overseas shipping delay",
+                  "state": "ENABLED",
+                  "variants": {"10sec": 10, "5sec": 5, "off": 0},
+                  "defaultVariant": "off"
+                }
+              }
+            }
+    additionalVolumes:
+      - name: config-ro
+        configMap:
+          name: flagd-fixed-config
   load-generator:
     # Crank traffic for demo visibility. 100 users with the chart default
     # (LOCUST_BROWSER_TRAFFIC_ENABLED=true) OOMs the pod at ~1.5Gi, so use
