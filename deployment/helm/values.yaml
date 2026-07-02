@@ -37,9 +37,14 @@ default:
     # annotation is only consumed by the OpenTelemetry Operator's admission
     # webhook — we run the Dash0 operator with instrumentWorkloads.mode=none,
     # so nothing picks it up and every SDK ships spans with an empty
-    # service.namespace. Set it here so the chart appends it into
-    # OTEL_RESOURCE_ATTRIBUTES for every component.
-    - name: OTEL_RESOURCE_ATTRIBUTES_EXTRA
+    # service.namespace. Set it here so every SDK picks it up via
+    # OTEL_RESOURCE_ATTRIBUTES.
+    #
+    # Note: the chart only translates OTEL_RESOURCE_ATTRIBUTES_EXTRA into
+    # OTEL_RESOURCE_ATTRIBUTES when set on a component's own envOverrides
+    # (see templates/_pod.tpl). At the default level it would pass through
+    # as an unrecognized env var, so set OTEL_RESOURCE_ATTRIBUTES directly.
+    - name: OTEL_RESOURCE_ATTRIBUTES
       value: service.namespace=otel-demo
 
 components:
