@@ -172,6 +172,26 @@ resource "kubernetes_config_map" "frontend_proxy_envoy" {
   }
 }
 
+# Custom flagd config that replaces the ConfigMap the chart bakes from its
+# own `flagd/demo.flagd.json`. Used to bake `productCatalogFailure=on` (and
+# any other flag defaults we want to survive flagd pod restarts, since the
+# chart's default config is copied into an emptyDir at init and any UI toggle
+# is lost on restart).
+#
+# `values.yaml` overrides `components.flagd.additionalVolumes` so the flagd
+# pod mounts THIS ConfigMap under `config-ro` instead of the chart-generated
+# `flagd-config`.
+resource "kubernetes_config_map" "flagd_config_override" {
+  metadata {
+    name      = "flagd-config-override"
+    namespace = kubernetes_namespace.otel_demo.metadata[0].name
+  }
+
+  data = {
+    "demo.flagd.json" = file("${path.module}/flagd/demo.flagd.json")
+  }
+}
+
 locals {
   # Wire the Dash0 Web SDK into the demo's frontend-proxy Envoy: mount our
   # forked envoy.tmpl.yaml over the image's baked-in one, and expose the
@@ -248,10 +268,12 @@ resource "helm_release" "otel_demo" {
 
   # The operator must be running first so its mutating webhook is available
   # when the demo pods are created (it injects k8s resource attributes). The
-  # envoy config override + web-sdk token secret must exist before the
-  # frontend-proxy pod starts.
+  # flagd config override must exist before the flagd pod schedules or its
+  # init container will fail. The envoy config override + web-sdk token
+  # secret must exist before the frontend-proxy pod starts.
   depends_on = [
     helm_release.dash0_operator,
+    kubernetes_config_map.flagd_config_override,
     kubernetes_config_map.frontend_proxy_envoy,
     kubernetes_secret.dash0_web_sdk,
   ]
