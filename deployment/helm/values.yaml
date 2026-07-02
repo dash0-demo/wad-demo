@@ -32,6 +32,15 @@ default:
     # at the operator's DaemonSet collector instead.
     - name: OTEL_COLLECTOR_NAME
       value: dash0-operator-opentelemetry-collector-service.dash0-system.svc.cluster.local
+    # The chart advertises service.namespace via the pod annotation
+    # `resource.opentelemetry.io/service.namespace: otel-demo`, but that
+    # annotation is only consumed by the OpenTelemetry Operator's admission
+    # webhook — we run the Dash0 operator with instrumentWorkloads.mode=none,
+    # so nothing picks it up and every SDK ships spans with an empty
+    # service.namespace. Set it here so the chart appends it into
+    # OTEL_RESOURCE_ATTRIBUTES for every component.
+    - name: OTEL_RESOURCE_ATTRIBUTES_EXTRA
+      value: service.namespace=otel-demo
 
 components:
   flagd:
