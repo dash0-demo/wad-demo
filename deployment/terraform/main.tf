@@ -142,6 +142,26 @@ resource "kubernetes_namespace" "otel_demo" {
   depends_on = [google_container_cluster.primary]
 }
 
+# Custom flagd config that replaces the ConfigMap the chart bakes from its
+# own `flagd/demo.flagd.json`. Used to bake `productCatalogFailure=on` (and
+# any other flag defaults we want to survive flagd pod restarts, since the
+# chart's default config is copied into an emptyDir at init and any UI toggle
+# is lost on restart).
+#
+# `values.yaml` overrides `components.flagd.additionalVolumes` so the flagd
+# pod mounts THIS ConfigMap under `config-ro` instead of the chart-generated
+# `flagd-config`.
+resource "kubernetes_config_map" "flagd_config_override" {
+  metadata {
+    name      = "flagd-config-override"
+    namespace = kubernetes_namespace.otel_demo.metadata[0].name
+  }
+
+  data = {
+    "demo.flagd.json" = file("${path.module}/flagd/demo.flagd.json")
+  }
+}
+
 resource "helm_release" "otel_demo" {
   name       = "otel-demo"
   namespace  = kubernetes_namespace.otel_demo.metadata[0].name
@@ -154,6 +174,11 @@ resource "helm_release" "otel_demo" {
   timeout = 900
 
   # The operator must be running first so its mutating webhook is available
-  # when the demo pods are created (it injects k8s resource attributes).
-  depends_on = [helm_release.dash0_operator]
+  # when the demo pods are created (it injects k8s resource attributes). The
+  # flagd config override must exist before the flagd pod schedules or the
+  # init container will fail.
+  depends_on = [
+    helm_release.dash0_operator,
+    kubernetes_config_map.flagd_config_override,
+  ]
 }
