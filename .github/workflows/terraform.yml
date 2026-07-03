@@ -34,6 +34,7 @@ jobs:
       TF_VAR_region: ${{ vars.GCP_REGION }}
       TF_VAR_dash0_auth_token: ${{ secrets.DASH0_AUTH_TOKEN }}
       TF_VAR_dash0_api_token: ${{ secrets.DASH0_API_TOKEN }}
+      TF_VAR_dash0_web_sdk_auth_token: ${{ secrets.DASH0_WEB_SDK_AUTH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 

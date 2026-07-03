@@ -57,6 +57,18 @@ variable "dash0_otlp_grpc_endpoint" {
   default     = "ingress.eu-west-1.aws.dash0.com:4317"
 }
 
+variable "dash0_otlp_http_endpoint" {
+  description = "Dash0 OTLP/HTTP ingress endpoint used by the Dash0 Web SDK from browsers. Full URL with scheme, no path."
+  type        = string
+  default     = "https://ingress.eu-west-1.aws.dash0.com"
+}
+
+variable "dash0_web_sdk_auth_token" {
+  description = "Dash0 auth token used by the browser-side Dash0 Web SDK. Becomes public in the frontend HTML, so it MUST be a separate token from dash0_auth_token, scoped only to the wad-demo dataset with Ingesting permission. Provide via TF_VAR_dash0_web_sdk_auth_token / GH Actions secret."
+  type        = string
+  sensitive   = true
+}
+
 variable "dash0_api_endpoint" {
   description = "Dash0 API endpoint used by the operator for resource synchronization (dashboards, views, etc.)."
   type        = string
