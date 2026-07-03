@@ -137,12 +137,16 @@ All in `deployment/terraform/variables.tf`:
   against the matching upstream tag and reapply the Lua block.
 - **Deployment events**: on every _successful_ apply against `main`, the
   `dash0-deploy-events` matrix job fans out one `dash0.deployment` log event
-  per demo service (all otel-demo application services + the Dash0 operator
-  components) via the
+  per demo service whose Kubernetes pod template _actually changed_ during
+  that apply, via the
   [`dash0hq/dash0-cli/.github/actions/send-log-event`](https://github.com/dash0hq/dash0-cli/tree/main/.github/actions/send-log-event)
-  action. A failed apply produces zero events — the matrix job only runs when
-  the `terraform` job succeeded, so the Dash0 timeline reflects only what
-  actually shipped. Each event carries the service's own `service.name` (and
+  action. The change set comes from `.github/scripts/detect_changed_services.py`,
+  which sha256-hashes the pod template of every `Deployment` / `DaemonSet` /
+  `StatefulSet` in the two Helm releases (`otel-demo` and `dash0-operator`)
+  before and after apply — everything that would trigger a rollout ends up
+  in that hash. Failed applies and no-op applies produce zero events, so the
+  Dash0 timeline reflects only real rollouts. Each event carries the
+  service's own `service.name` (and
   `service.namespace` where the running service sets one — currently only the
   `dash0-operator` components) plus the `vcs.repository.url.full` /
   `vcs.ref.head.revision` / `vcs.ref.head.name` attributes the operator stamps
