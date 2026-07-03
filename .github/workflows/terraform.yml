@@ -35,6 +35,11 @@ jobs:
       TF_VAR_dash0_auth_token: ${{ secrets.DASH0_AUTH_TOKEN }}
       TF_VAR_dash0_api_token: ${{ secrets.DASH0_API_TOKEN }}
       TF_VAR_dash0_web_sdk_auth_token: ${{ secrets.DASH0_WEB_SDK_AUTH_TOKEN }}
+    outputs:
+      # JSON array of `{name, namespace}` entries whose pod template changed
+      # during this apply — drives the `dash0-deploy-events` matrix. Empty
+      # array (`[]`) means nothing was rolled out, so no events fan out.
+      changed_services: ${{ steps.diff_manifests.outputs.changed_services }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,6 +50,8 @@ jobs:
           service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
 
       - uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: gke-gcloud-auth-plugin
 
       - uses: hashicorp/setup-terraform@v3
         with:
@@ -89,6 +96,40 @@ jobs:
         if: steps.plan.outcome == 'failure'
         run: exit 1
 
+      # From here on: only main-branch pushes / workflow_dispatch actually
+      # apply — capture manifests before and after so the follow-up diff can
+      # detect which services rolled out. `helm get manifest` fails silently
+      # on first-ever install (release does not exist yet); the diff script
+      # treats a missing file as an empty "before", so every workload counts
+      # as new on the first apply.
+      - name: install helm
+        if: |
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      # Cluster name is hard-coded here to match `cluster_name` default in
+      # deployment/terraform/variables.tf. Bump both if you rename the cluster.
+      - name: kubeconfig
+        if: |
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        run: |
+          gcloud container clusters get-credentials wad-demo \
+            --region "${{ vars.GCP_REGION }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}"
+
+      - name: capture pre-apply helm manifests
+        if: |
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        run: |
+          mkdir -p /tmp/manifest-before
+          helm get manifest otel-demo -n otel-demo > /tmp/manifest-before/otel-demo.yaml 2>/dev/null || true
+          helm get manifest dash0-operator -n dash0-system > /tmp/manifest-before/dash0-operator.yaml 2>/dev/null || true
+
       - name: terraform apply
         id: apply
         if: |
@@ -96,50 +137,39 @@ jobs:
           (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
         run: terraform apply -auto-approve tfplan
 
-  # Fan out a dash0.deployment event per demo service (matching what the
-  # otel-demo Helm chart deploys into `otel-demo`, plus the Dash0 operator
-  # components in `dash0-operator`). Each event carries the service's own
-  # service.name (and service.namespace where applicable) plus the VCS
-  # attributes stamped on all telemetry, so Dash0/Agent0 can correlate an
-  # alert on any single service with the exact commit that was deployed.
+      - name: diff manifests to detect changed services
+        id: diff_manifests
+        if: |
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        run: |
+          mkdir -p /tmp/manifest-after
+          helm get manifest otel-demo -n otel-demo > /tmp/manifest-after/otel-demo.yaml
+          helm get manifest dash0-operator -n dash0-system > /tmp/manifest-after/dash0-operator.yaml
+          python3 -m pip install --quiet --user pyyaml
+          changed=$(python3 "$GITHUB_WORKSPACE/.github/scripts/detect_changed_services.py" /tmp/manifest-before /tmp/manifest-after)
+          echo "Changed services: $changed"
+          echo "changed_services=$changed" >> "$GITHUB_OUTPUT"
+
+  # Fan out one `dash0.deployment` log event per demo service whose pod
+  # template ACTUALLY changed in this apply — the terraform job's manifest
+  # diff (`detect_changed_services.py`) drives the matrix dynamically. If
+  # nothing changed the array is empty and this job is skipped, so the
+  # Dash0 timeline reflects real rollouts, not every apply. A failed apply
+  # also skips this job (GH Actions won't run a `needs:`-dependent job
+  # unless the dependency succeeded).
   dash0-deploy-events:
     needs: terraform
-    # No `always()` — GH Actions requires `needs.terraform` to have succeeded
-    # for this job to run, so a failed apply produces zero deployment events
-    # (rather than a fan-out of "failed" events that muddy the timeline).
     if: |
-      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      needs.terraform.outputs.changed_services != '[]' && (
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      )
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        service:
-          # otel-demo application services (service.namespace unset)
-          - { name: accounting,       namespace: "" }
-          - { name: ad,               namespace: "" }
-          - { name: cart,             namespace: "" }
-          - { name: checkout,         namespace: "" }
-          - { name: currency,         namespace: "" }
-          - { name: email,            namespace: "" }
-          - { name: flagd,            namespace: "" }
-          - { name: fraud-detection,  namespace: "" }
-          - { name: frontend,         namespace: "" }
-          - { name: frontend-proxy,   namespace: "" }
-          - { name: kafka,            namespace: "" }
-          - { name: llm,              namespace: "" }
-          - { name: load-generator,   namespace: "" }
-          - { name: payment,          namespace: "" }
-          - { name: postgresql,       namespace: "" }
-          - { name: product-catalog,  namespace: "" }
-          - { name: product-reviews,  namespace: "" }
-          - { name: quote,            namespace: "" }
-          - { name: recommendation,   namespace: "" }
-          - { name: shipping,         namespace: "" }
-          - { name: valkey-cart,      namespace: "" }
-          # Dash0 operator components
-          - { name: dash0-operator-collector, namespace: dash0-operator }
-          - { name: operator-manager,         namespace: dash0-operator }
+        service: ${{ fromJSON(needs.terraform.outputs.changed_services) }}
     steps:
       - name: send dash0.deployment event
         uses: dash0hq/dash0-cli/.github/actions/send-log-event@main
@@ -148,7 +178,7 @@ jobs:
           auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
           dataset: wad-demo
           event-name: dash0.deployment
-          body: "${{ matrix.service.name }} terraform apply succeeded"
+          body: "Deployed ${{ matrix.service.name }} to the wad-demo cluster at commit ${{ github.sha }} on branch ${{ github.ref_name }} by ${{ github.actor }} via ${{ github.workflow }}#${{ github.run_id }}."
           severity-number: "9"
           severity-text: INFO
           service-name: ${{ matrix.service.name }}
