@@ -32,32 +32,39 @@ import yaml  # PyYAML — installed via pip in the workflow.
 
 WORKLOAD_KINDS = {"Deployment", "DaemonSet", "StatefulSet"}
 
-# k8s namespace → Dash0 service.namespace value on emitted events.
-# Runtime telemetry from these pods already carries these service.namespace
-# values (see values.yaml OTEL_RESOURCE_ATTRIBUTES and the operator's chart
-# defaults), so events must match to correlate on the same service.
-DASH0_NAMESPACE_BY_K8S_NS = {
+# Helm release name (== manifest filename stem) → Dash0 service.namespace
+# value on emitted events. `helm get manifest` strips `metadata.namespace`
+# from every doc (namespace is implicit from the release's -n flag), so
+# per-workload namespace lookup does not work; we key off the release
+# instead. Runtime telemetry from these pods already carries these
+# service.namespace values (see values.yaml OTEL_RESOURCE_ATTRIBUTES and
+# the operator's chart defaults), so events must match to correlate on
+# the same service in Dash0.
+DASH0_NAMESPACE_BY_RELEASE = {
     "otel-demo": "otel-demo",
-    "dash0-system": "dash0-operator",
+    "dash0-operator": "dash0-operator",
 }
 
 
-def load_workload_hashes(path: Path) -> dict[tuple[str, str], tuple[str, str]]:
-    """Return {(k8s_namespace, workload_name): (component_label, template_hash)}.
+def load_workload_hashes(path: Path) -> dict[str, tuple[str, str]]:
+    """Return {workload_name: (component_label, template_hash)}.
 
-    A missing file yields an empty dict; the caller treats every workload
-    in the "after" set as new.
+    Keyed by workload name only — a Helm release lives in a single
+    namespace and workload names are unique within it, so name is a
+    stable identity across before/after snapshots.
+
+    A missing file yields an empty dict; the caller treats every
+    workload in the "after" set as new.
     """
     if not path.exists():
         return {}
     with path.open() as f:
         docs = list(yaml.safe_load_all(f))
-    out: dict[tuple[str, str], tuple[str, str]] = {}
+    out: dict[str, tuple[str, str]] = {}
     for doc in docs:
         if not doc or doc.get("kind") not in WORKLOAD_KINDS:
             continue
         md = doc.get("metadata") or {}
-        ns = md.get("namespace") or ""
         name = md.get("name") or ""
         labels = md.get("labels") or {}
         component = labels.get("app.kubernetes.io/component") or name
@@ -65,7 +72,7 @@ def load_workload_hashes(path: Path) -> dict[tuple[str, str], tuple[str, str]]:
         digest = hashlib.sha256(
             json.dumps(template, sort_keys=True, default=str).encode()
         ).hexdigest()
-        out[(ns, name)] = (component, digest)
+        out[name] = (component, digest)
     return out
 
 
@@ -81,13 +88,14 @@ def main() -> int:
 
     changed: list[dict[str, str]] = []
     for after_file in sorted(after_dir.glob("*.yaml")):
+        release = after_file.stem
+        dash0_ns = DASH0_NAMESPACE_BY_RELEASE.get(release, "")
         after = load_workload_hashes(after_file)
         before = load_workload_hashes(before_dir / after_file.name)
-        for (ns, name), (component, digest) in after.items():
-            before_hash = before.get((ns, name), (None, None))[1]
+        for name, (component, digest) in after.items():
+            before_hash = before.get(name, (None, None))[1]
             if before_hash == digest:
                 continue
-            dash0_ns = DASH0_NAMESPACE_BY_K8S_NS.get(ns, ns)
             changed.append({"name": component, "namespace": dash0_ns})
 
     # Dedupe (Helm can emit the same component name in multiple workloads;
