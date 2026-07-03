@@ -115,15 +115,7 @@ static_resources:
                             local length = body:length()
                             if length == 0 then return end
                             local s = tostring(body:getBytes(0, length))
-                            -- Uses the Dash0 Web SDK IIFE queue-stub pattern
-                            -- documented at https://github.com/dash0hq/dash0-sdk-web/blob/main/INSTALL.md
-                            -- : the inline block installs `window.dash0` as
-                            -- a function that queues arguments; when the
-                            -- deferred external script loads it drains the
-                            -- queue and processes each call. All APIs on the
-                            -- IIFE build are invoked as `dash0("methodName",
-                            -- ...args)` — do NOT call `dash0.init(...)`,
-                            -- that shape only exists in the ESM build.
+                            -- See https://github.com/dash0hq/dash0-sdk-web/blob/main/INSTALL.md
                             local injection =
                               '<script>' ..
                               '(function(d,a,s,h,z,e,r,o){d[a]||((z=d[a]=function(){h.push(arguments)}),(z._t=new Date()),(z._v=1),(h=z._q=[]))})(window,"dash0");' ..
