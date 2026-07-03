@@ -52,8 +52,17 @@ static_resources:
                           redirect: { path_redirect: "/loadgen/" }
                         - match: { prefix: "/loadgen/" }
                           route: { cluster: loadgen, prefix_rewrite: "/" }
+                        # `/otlp-http/*` is where the OTel demo's built-in
+                        # OpenTelemetry Web SDK (baked into the Next.js
+                        # frontend image, not something we can disable at
+                        # source) POSTs OTLP traces. We're using the Dash0
+                        # Web SDK instead (injected by the Lua filter
+                        # below), so absorb these OTLP POSTs at the proxy
+                        # — the SDK considers the batch delivered on any
+                        # 2xx, and no duplicate frontend-web service
+                        # lands in Dash0 via the operator's collector.
                         - match: { prefix: "/otlp-http/" }
-                          route: { cluster: opentelemetry_collector_http, prefix_rewrite: "/" }
+                          direct_response: { status: 204 }
                         - match: { path: "/jaeger" }
                           redirect: { path_redirect: "/jaeger/" }
                         - match: { prefix: "/jaeger/" }
@@ -208,18 +217,6 @@ static_resources:
                     socket_address:
                       address: ${OTEL_COLLECTOR_HOST}
                       port_value: ${OTEL_COLLECTOR_PORT_GRPC}
-    - name: opentelemetry_collector_http
-      type: STRICT_DNS
-      lb_policy: ROUND_ROBIN
-      load_assignment:
-        cluster_name: opentelemetry_collector_http
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  address:
-                    socket_address:
-                      address: ${OTEL_COLLECTOR_HOST}
-                      port_value: ${OTEL_COLLECTOR_PORT_HTTP}
     - name: frontend
       type: STRICT_DNS
       lb_policy: ROUND_ROBIN

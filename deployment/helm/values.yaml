@@ -43,6 +43,23 @@ default:
       value: service.namespace=otel-demo
 
 components:
+  frontend:
+    envOverrides:
+      # The demo's Next.js frontend embeds its own OpenTelemetry-JS Web SDK
+      # that always registers on page load and can't be disabled from the
+      # image. The chart's default endpoint (`http://localhost:8080/...`)
+      # only works with `kubectl port-forward`; from any other origin the
+      # SDK spams failing localhost POSTs and no data flows anywhere useful.
+      #
+      # We use the Dash0 Web SDK (injected by the frontend-proxy's Lua
+      # filter — see deployment/terraform/frontend-proxy/envoy.tmpl.yaml)
+      # for RUM, so redirect the demo's built-in SDK at a same-origin path
+      # that the frontend-proxy's Envoy answers with `204 No Content`. The
+      # SDK considers the batch delivered on any 2xx, so no retries and no
+      # console errors, and no duplicate `frontend-web` service data lands
+      # in Dash0 via the operator's collector.
+      - name: PUBLIC_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+        value: /otlp-http/v1/traces
   flagd:
     sidecarContainers: []
   load-generator:
