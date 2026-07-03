@@ -142,6 +142,36 @@ resource "kubernetes_namespace" "otel_demo" {
   depends_on = [google_container_cluster.primary]
 }
 
+# Public (browser-exposed) Dash0 auth token, mounted into the frontend-proxy
+# pod via an env var and inlined at container start by envsubst into the Lua
+# HTTP filter's source. MUST be a token scoped to the wad-demo dataset with
+# Ingesting-only permission — it will be visible to anyone who views the site.
+resource "kubernetes_secret" "dash0_web_sdk" {
+  metadata {
+    name      = "dash0-web-sdk-token"
+    namespace = kubernetes_namespace.otel_demo.metadata[0].name
+  }
+
+  data = {
+    token = var.dash0_web_sdk_auth_token
+  }
+}
+
+# Overrides the envoy.tmpl.yaml baked into the demo's frontend-proxy image.
+# The fork adds a Lua HTTP filter that injects the Dash0 Web SDK <script> tag
+# into text/html responses. When bumping otel_demo_chart_version, re-sync the
+# base config against the matching upstream tag and reapply the Lua filter.
+resource "kubernetes_config_map" "frontend_proxy_envoy" {
+  metadata {
+    name      = "frontend-proxy-envoy-override"
+    namespace = kubernetes_namespace.otel_demo.metadata[0].name
+  }
+
+  data = {
+    "envoy.tmpl.yaml" = file("${path.module}/frontend-proxy/envoy.tmpl.yaml")
+  }
+}
+
 # Custom flagd config that replaces the ConfigMap the chart bakes from its
 # own `flagd/demo.flagd.json`. Used to bake `productCatalogFailure=on` (and
 # any other flag defaults we want to survive flagd pod restarts, since the
@@ -162,6 +192,66 @@ resource "kubernetes_config_map" "flagd_config_override" {
   }
 }
 
+locals {
+  # Wire the Dash0 Web SDK into the demo's frontend-proxy Envoy: mount our
+  # forked envoy.tmpl.yaml over the image's baked-in one, and expose the
+  # Web-SDK-specific config (endpoint, public token, service version, VCS
+  # attributes) as pod env vars. envsubst inlines them into the Lua HTTP
+  # filter's source at container start.
+  otel_demo_values_overrides = yamlencode({
+    components = {
+      "frontend-proxy" = {
+        envOverrides = [
+          {
+            name  = "DASH0_WEB_SDK_ENDPOINT_URL"
+            value = var.dash0_otlp_http_endpoint
+          },
+          {
+            name = "DASH0_WEB_SDK_AUTH_TOKEN"
+            valueFrom = {
+              secretKeyRef = {
+                name = kubernetes_secret.dash0_web_sdk.metadata[0].name
+                key  = "token"
+              }
+            }
+          },
+          {
+            name  = "DASH0_WEB_SDK_SERVICE_VERSION"
+            value = var.otel_demo_chart_version
+          },
+          {
+            name  = "DASH0_WEB_SDK_SERVICE_NAMESPACE"
+            value = kubernetes_namespace.otel_demo.metadata[0].name
+          },
+          {
+            name  = "DASH0_WEB_SDK_VCS_REPO_URL"
+            value = var.github_repo_url
+          },
+          {
+            name  = "DASH0_WEB_SDK_VCS_HEAD_SHA"
+            value = data.external.git_head.result.sha
+          },
+        ]
+        additionalVolumes = [
+          {
+            name = "envoy-config-override"
+            configMap = {
+              name = kubernetes_config_map.frontend_proxy_envoy.metadata[0].name
+            }
+          },
+        ]
+        additionalVolumeMounts = [
+          {
+            name      = "envoy-config-override"
+            mountPath = "/home/envoy/envoy.tmpl.yaml"
+            subPath   = "envoy.tmpl.yaml"
+          },
+        ]
+      }
+    }
+  })
+}
+
 resource "helm_release" "otel_demo" {
   name       = "otel-demo"
   namespace  = kubernetes_namespace.otel_demo.metadata[0].name
@@ -169,16 +259,22 @@ resource "helm_release" "otel_demo" {
   chart      = "opentelemetry-demo"
   version    = var.otel_demo_chart_version
 
-  values = [file("${path.module}/../helm/values.yaml")]
+  values = [
+    file("${path.module}/../helm/values.yaml"),
+    local.otel_demo_values_overrides,
+  ]
 
   timeout = 900
 
   # The operator must be running first so its mutating webhook is available
   # when the demo pods are created (it injects k8s resource attributes). The
   # flagd config override must exist before the flagd pod schedules or the
-  # init container will fail.
+  # init container will fail. The envoy config override + web-sdk token secret
+  # must exist before the frontend-proxy pod starts.
   depends_on = [
     helm_release.dash0_operator,
     kubernetes_config_map.flagd_config_override,
+    kubernetes_config_map.frontend_proxy_envoy,
+    kubernetes_secret.dash0_web_sdk,
   ]
 }
