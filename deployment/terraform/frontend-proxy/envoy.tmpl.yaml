@@ -115,19 +115,29 @@ static_resources:
                             local length = body:length()
                             if length == 0 then return end
                             local s = tostring(body:getBytes(0, length))
+                            -- Uses the Dash0 Web SDK IIFE queue-stub pattern
+                            -- documented at https://github.com/dash0hq/dash0-sdk-web/blob/main/INSTALL.md
+                            -- : the inline block installs `window.dash0` as
+                            -- a function that queues arguments; when the
+                            -- deferred external script loads it drains the
+                            -- queue and processes each call. All APIs on the
+                            -- IIFE build are invoked as `dash0("methodName",
+                            -- ...args)` — do NOT call `dash0.init(...)`,
+                            -- that shape only exists in the ESM build.
                             local injection =
-                              '<script src="https://unpkg.com/@dash0/sdk-web@0.18.1/dist/dash0.iife.js" crossorigin="anonymous"></script>' ..
-                              '<script>if(window.dash0){' ..
-                                'window.dash0.init({' ..
-                                  '"serviceName":"frontend-web",' ..
-                                  '"serviceVersion":"' .. SVC_VER .. '",' ..
-                                  '"endpoint":{"url":"' .. SDK_URL .. '","authToken":"' .. SDK_TOKEN .. '"}' ..
-                                '});' ..
-                                'window.dash0.addSignalAttribute("service.namespace","' .. SVC_NS .. '");' ..
-                                'window.dash0.addSignalAttribute("vcs.repository.url.full","' .. VCS_URL .. '");' ..
-                                'window.dash0.addSignalAttribute("vcs.ref.head.revision","' .. VCS_SHA .. '");' ..
-                                'window.dash0.addSignalAttribute("vcs.provider.name","github");' ..
-                              '}</script>'
+                              '<script>' ..
+                              '(function(d,a,s,h,z,e,r,o){d[a]||((z=d[a]=function(){h.push(arguments)}),(z._t=new Date()),(z._v=1),(h=z._q=[]))})(window,"dash0");' ..
+                              'dash0("init",{' ..
+                                '"serviceName":"frontend-web",' ..
+                                '"serviceVersion":"' .. SVC_VER .. '",' ..
+                                '"endpoint":{"url":"' .. SDK_URL .. '","authToken":"' .. SDK_TOKEN .. '"}' ..
+                              '});' ..
+                              'dash0("addSignalAttribute","service.namespace","' .. SVC_NS .. '");' ..
+                              'dash0("addSignalAttribute","vcs.repository.url.full","' .. VCS_URL .. '");' ..
+                              'dash0("addSignalAttribute","vcs.ref.head.revision","' .. VCS_SHA .. '");' ..
+                              'dash0("addSignalAttribute","vcs.provider.name","github");' ..
+                              '</script>' ..
+                              '<script defer crossorigin="anonymous" src="https://unpkg.com/@dash0/sdk-web@0.18.1/dist/dash0.iife.js"></script>'
                             local new_s, n = string.gsub(s, "</head>", injection .. "</head>", 1)
                             if n == 0 then return end
                             body:setBytes(new_s)
