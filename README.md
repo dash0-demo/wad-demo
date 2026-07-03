@@ -83,7 +83,10 @@ TF_VAR_dash0_web_sdk_auth_token=<web-sdk-ingest-token> \
 ```
 
 After apply, point `kubectl` at the cluster with the command printed in the
-Terraform outputs (`get_credentials_command`).
+Terraform outputs (`get_credentials_command`). The `frontend_public_url`
+output is the demo's public HTTP endpoint (LoadBalancer with a reserved
+regional external IP) — open it in a browser to exercise the Dash0 Web SDK,
+or point Dash0 synthetics at it.
 
 ## Tear down
 
