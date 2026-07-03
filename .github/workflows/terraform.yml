@@ -104,11 +104,12 @@ jobs:
   # alert on any single service with the exact commit that was deployed.
   dash0-deploy-events:
     needs: terraform
+    # No `always()` — GH Actions requires `needs.terraform` to have succeeded
+    # for this job to run, so a failed apply produces zero deployment events
+    # (rather than a fan-out of "failed" events that muddy the timeline).
     if: |
-      always() && (
-        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
-        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
-      )
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -147,14 +148,14 @@ jobs:
           auth-token: ${{ secrets.DASH0_AUTH_TOKEN }}
           dataset: wad-demo
           event-name: dash0.deployment
-          body: "${{ matrix.service.name }} terraform apply ${{ needs.terraform.result == 'success' && 'succeeded' || 'failed' }}"
-          severity-number: ${{ needs.terraform.result == 'success' && '9' || '17' }}
-          severity-text: ${{ needs.terraform.result == 'success' && 'INFO' || 'ERROR' }}
+          body: "${{ matrix.service.name }} terraform apply succeeded"
+          severity-number: "9"
+          severity-text: INFO
           service-name: ${{ matrix.service.name }}
           service-namespace: ${{ matrix.service.namespace }}
           deployment-name: wad-demo
           deployment-id: ${{ github.run_id }}
-          deployment-status: ${{ needs.terraform.result == 'success' && 'succeeded' || 'failed' }}
+          deployment-status: succeeded
           vcs-repository-url: ${{ github.server_url }}/${{ github.repository }}
           vcs-ref-head-revision: ${{ github.sha }}
           vcs-ref-head-name: ${{ github.ref_name }}
