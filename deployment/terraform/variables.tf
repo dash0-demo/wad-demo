@@ -75,6 +75,12 @@ variable "dash0_api_endpoint" {
   default     = "https://api.eu-west-1.aws.dash0.com"
 }
 
+variable "ebpf_profiler_image_tag" {
+  description = "Tag of the otel/opentelemetry-collector-ebpf-profiler image deployed as the node-local profiling DaemonSet."
+  type        = string
+  default     = "0.153.0"
+}
+
 variable "github_repo_url" {
   description = "Full HTTPS URL of the GitHub repo backing this deployment. Injected on all telemetry as vcs.repository.url.full so Agent0 can locate the code and open PRs."
   type        = string

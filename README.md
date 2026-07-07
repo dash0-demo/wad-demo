@@ -120,6 +120,7 @@ All in `deployment/terraform/variables.tf`:
 | `dash0_otlp_http_endpoint`     | `https://ingress.eu-west-1.aws.dash0.com` | OTLP/HTTP endpoint used by the Dash0 Web SDK from browsers |
 | `dash0_web_sdk_auth_token`     | _required, sensitive_                  | Public ingest token for the Web SDK (env: `TF_VAR_dash0_web_sdk_auth_token`)   |
 | `dash0_api_endpoint`           | `https://api.eu-west-1.aws.dash0.com`  | Dash0 API endpoint (for operator-side dashboards/views sync) |
+| `ebpf_profiler_image_tag`      | `0.153.0`                              | Tag of the `otel/opentelemetry-collector-ebpf-profiler` image running as the node-local profiling DaemonSet |
 
 ## Notes
 
@@ -179,6 +180,22 @@ All in `deployment/terraform/variables.tf`:
   Side effect: kubeletstats utilization metrics (`k8s.pod.cpu_limit_utilization`
   and siblings) are not collected — Autopilot withholds the `nodes/proxy`
   permission needed for the kubelet `/pod` endpoint.
+- **eBPF profiling**: `operator.profilingEnabled=true` on the operator turns
+  on OTel profile ingestion in its collectors, and
+  `deployment/terraform/ebpf-profiler.tf` adds a node-local DaemonSet running
+  the `otel/opentelemetry-collector-ebpf-profiler` image. The profiler samples
+  stacks with eBPF, exports OTel profiles over OTLP/gRPC to the operator's
+  collector Service, and the operator forwards them to Dash0. See the [Dash0
+  profiling docs](https://www.dash0.com/docs/dash0/monitoring/kubernetes/dash0-operator/profiling).
+  The DaemonSet needs `hostPID`, `hostPath` mounts of `/proc` + `/sys`, and
+  `SYS_ADMIN`/`SYS_PTRACE`/`SYS_RESOURCE`/`SYSLOG` capabilities. On GKE
+  Autopilot these bits are only permitted for images covered by a
+  `WorkloadAllowlist`, and the Dash0 operator's own synchronizer (path
+  `Dash0/operator/*`) does **not** cover this profiler image — if Warden
+  rejects the pods, the DaemonSet reports 0/N Ready. The Terraform resource
+  uses `wait_for_rollout = false` so the apply doesn't block on Autopilot
+  rejection; check `kubectl -n dash0-system get ds ebpf-profiler` to see
+  whether the profiler is actually running.
 - **State**: stored in GCS bucket `${PROJECT_ID}-tf-state-wad-demo` with
   versioning enabled.
 - **Auth**: GitHub Actions impersonates the Terraform SA via Workload Identity
