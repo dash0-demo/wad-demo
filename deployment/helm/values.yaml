@@ -126,3 +126,18 @@ components:
       limits:
         cpu: "2"
         memory: 3000Mi
+    # Kubernetes defaults /dev/shm to 64 MiB (a tmpfs sized from the pod's
+    # memory), and that's too small for Chromium — it crashes on page.goto
+    # while trying to allocate render-process shared memory. Playwright's
+    # PlaywrightUser catch-all swallows the exception, so the failure is
+    # invisible in Locust logs: the pod pegs CPU respawning browsers that
+    # die on their first navigation, and no request ever hits Envoy.
+    # Mount a 512Mi tmpfs at /dev/shm so Chromium has room to breathe.
+    additionalVolumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 512Mi
+    additionalVolumeMounts:
+      - name: dshm
+        mountPath: /dev/shm
