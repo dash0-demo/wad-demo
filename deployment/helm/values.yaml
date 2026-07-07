@@ -126,18 +126,29 @@ components:
       limits:
         cpu: "2"
         memory: 3000Mi
-    # Kubernetes defaults /dev/shm to 64 MiB (a tmpfs sized from the pod's
-    # memory), and that's too small for Chromium — it crashes on page.goto
-    # while trying to allocate render-process shared memory. Playwright's
-    # PlaywrightUser catch-all swallows the exception, so the failure is
-    # invisible in Locust logs: the pod pegs CPU respawning browsers that
-    # die on their first navigation, and no request ever hits Envoy.
-    # Mount a 512Mi tmpfs at /dev/shm so Chromium has room to breathe.
+    # Two mounts:
+    #   1. /dev/shm — Kubernetes defaults this tmpfs to 64 MiB, and Chromium
+    #      wants more headroom to render pages. 512 MiB is safe.
+    #   2. /usr/src/app/locustfile.py — the chart's default locustfile has a
+    #      Playwright bug (WebsiteBrowserUser references self.tracer, which
+    #      isn't reachable from its async @task methods under the plugin's
+    #      gevent+asyncio interop → AttributeError swallowed by try/except →
+    #      Locust reports 10 browser users spawned but zero HTTP requests
+    #      ever reach frontend-proxy). This override swaps to a module-level
+    #      tracer. Source lives in deployment/terraform/loadgen/locustfile.py
+    #      and is delivered via the `load-generator-locustfile-override`
+    #      ConfigMap (see terraform/main.tf).
     additionalVolumes:
       - name: dshm
         emptyDir:
           medium: Memory
           sizeLimit: 512Mi
+      - name: locustfile-override
+        configMap:
+          name: load-generator-locustfile-override
     additionalVolumeMounts:
       - name: dshm
         mountPath: /dev/shm
+      - name: locustfile-override
+        mountPath: /usr/src/app/locustfile.py
+        subPath: locustfile.py
