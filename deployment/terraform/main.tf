@@ -240,6 +240,28 @@ resource "kubernetes_config_map" "flagd_config_override" {
   }
 }
 
+# Patched locustfile that fixes the Playwright tasks. Upstream references
+# `self.tracer` inside `WebsiteBrowserUser`'s async @task methods; under the
+# locust_plugins Playwright user (gevent + asyncio interop) those tasks run
+# where `self` doesn't carry the __init__-assigned attribute, so every task
+# raises AttributeError swallowed by the surrounding try/except. Result:
+# Locust reports 10 browser users spawned but no HTTP request ever reaches
+# frontend-proxy. This file swaps to a module-level `tracer`.
+#
+# `values.yaml` overrides `components.load-generator.additionalVolumes` +
+# `additionalVolumeMounts` so the pod mounts this ConfigMap over the image's
+# baked-in `/usr/src/app/locustfile.py`.
+resource "kubernetes_config_map" "load_generator_locustfile" {
+  metadata {
+    name      = "load-generator-locustfile-override"
+    namespace = kubernetes_namespace.otel_demo.metadata[0].name
+  }
+
+  data = {
+    "locustfile.py" = file("${path.module}/loadgen/locustfile.py")
+  }
+}
+
 locals {
   # Wire the Dash0 Web SDK into the demo's frontend-proxy Envoy: mount our
   # forked envoy.tmpl.yaml over the image's baked-in one, and expose the
