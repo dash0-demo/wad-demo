@@ -96,13 +96,33 @@ components:
         configMap:
           name: flagd-config-override
   load-generator:
-    # Crank traffic for demo visibility. 100 users with the chart default
-    # (LOCUST_BROWSER_TRAFFIC_ENABLED=true) OOMs the pod at ~1.5Gi, so use
-    # plain HTTP load only.
+    # Run Locust in dual-user mode: plain HTTP (`WebsiteUser`) for backend
+    # load, plus Playwright-driven headless Chromium (`WebsiteBrowserUser`)
+    # so the Dash0 Web SDK — injected into every HTML response by the
+    # frontend-proxy's Envoy Lua filter (see
+    # deployment/terraform/frontend-proxy/envoy.tmpl.yaml) — actually
+    # executes in a real browser and produces Web Monitoring signals
+    # (sessions, page views, resource timings) against the reserved public
+    # frontend IP without needing external drivers.
+    #
+    # Locust distributes users evenly across the two classes by default, so
+    # 20 users → ~10 concurrent headless Chromium tabs. Chromium alone is
+    # ~150 MiB per instance; the chart's default 1500Mi limit OOMs the pod
+    # once browser traffic is on, so raise memory to 3000Mi and pin CPU
+    # (Playwright is CPU-heavy). Autopilot needs an explicit request or it
+    # provisions the minimum burstable slice, which throttles Chromium
+    # startup.
     envOverrides:
       - name: LOCUST_USERS
-        value: "50"
+        value: "20"
       - name: LOCUST_SPAWN_RATE
-        value: "10"
+        value: "2"
       - name: LOCUST_BROWSER_TRAFFIC_ENABLED
-        value: "false"
+        value: "true"
+    resources:
+      requests:
+        cpu: "2"
+        memory: 3000Mi
+      limits:
+        cpu: "2"
+        memory: 3000Mi
