@@ -101,6 +101,13 @@ TF_VAR_dash0_web_sdk_auth_token=<web-sdk-ingest-token> \
 `helm_release` is removed first (along with the demo workloads), then the
 namespace, then the GKE cluster.
 
+Or, from GitHub Actions: run the **terraform destroy** workflow via
+`workflow_dispatch`, typing `DESTROY` in the confirmation input. Same
+teardown, no local tooling required. Handy when a change would otherwise
+force-replace the cluster (e.g. Autopilot ↔ Standard migrations) —
+run destroy first, then merge the change so the next apply builds
+fresh.
+
 ## Configuration knobs
 
 All in `deployment/terraform/variables.tf`:
