@@ -1,0 +1,50 @@
+kind: Dash0SyntheticCheck
+metadata:
+  name: wad-demo-product-catalog-list
+spec:
+  enabled: true
+  notifications:
+    channels: []
+  plugin:
+    display:
+      name: OTel demo — product-catalog list API
+    kind: http
+    spec:
+      assertions:
+        criticalAssertions:
+          - kind: status_code
+            spec:
+              value: "200"
+              operator: is
+          - kind: timing
+            spec:
+              type: response
+              value: 5000ms
+              operator: lte
+        degradedAssertions:
+          - kind: timing
+            spec:
+              type: response
+              value: 2000ms
+              operator: lte
+      request:
+        method: get
+        url: ${frontend_url}/api/products
+        queryParameters: []
+        headers: []
+        redirects: follow
+        tls:
+          allowInsecure: false
+        tracing:
+          addTracingHeaders: true
+  retries:
+    kind: fixed
+    spec:
+      attempts: 3
+      delay: 1s
+  schedule:
+    interval: 5m
+    locations:
+      - de-frankfurt
+      - us-oregon
+    strategy: all_locations
