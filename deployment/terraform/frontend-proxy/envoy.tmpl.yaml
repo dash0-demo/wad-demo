@@ -63,6 +63,27 @@ static_resources:
                         # lands in Dash0 via the operator's collector.
                         - match: { prefix: "/otlp-http/" }
                           direct_response: { status: 204 }
+                        # `/_dash0/*` is the same-origin proxy the injected
+                        # Dash0 Web SDK sends OTLP HTTP to (see Lua filter
+                        # below, `SDK_URL = "/_dash0"`). Sending direct to
+                        # ingress.eu-west-1.aws.dash0.com fails the CORS
+                        # preflight from an unregistered origin; going via
+                        # same-origin sidesteps CORS entirely. Envoy
+                        # rewrites the path (/_dash0/v1/traces → /v1/traces),
+                        # sets the SNI + Host header to the real hostname,
+                        # and injects the Bearer token server-side so the
+                        # public HTML never exposes it.
+                        - match: { prefix: "/_dash0/" }
+                          route:
+                            cluster: dash0_ingest
+                            prefix_rewrite: "/"
+                            host_rewrite_literal: "${DASH0_WEB_SDK_UPSTREAM_HOST}"
+                            timeout: 10s
+                          request_headers_to_add:
+                            - header:
+                                key: "Authorization"
+                                value: "Bearer ${DASH0_WEB_SDK_AUTH_TOKEN}"
+                              append_action: OVERWRITE_IF_EXISTS_OR_ADD
                         - match: { path: "/jaeger" }
                           redirect: { path_redirect: "/jaeger/" }
                         - match: { prefix: "/jaeger/" }
@@ -102,8 +123,15 @@ static_resources:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
                       default_source_code:
                         inline_string: |
-                          local SDK_URL = "${DASH0_WEB_SDK_ENDPOINT_URL}"
-                          local SDK_TOKEN = "${DASH0_WEB_SDK_AUTH_TOKEN}"
+                          -- The SDK POSTs OTLP HTTP to <SDK_URL>/v1/traces etc.
+                          -- Using a same-origin path (proxied by the route
+                          -- above) sidesteps the CORS preflight that
+                          -- ingress.eu-west-1.aws.dash0.com rejects for
+                          -- unregistered origins. The Bearer token is
+                          -- injected server-side by Envoy, so the SDK
+                          -- config carries an empty authToken and the
+                          -- token never appears in the HTML.
+                          local SDK_URL = "/_dash0"
                           local SVC_VER = "${DASH0_WEB_SDK_SERVICE_VERSION}"
                           local SVC_NS = "${DASH0_WEB_SDK_SERVICE_NAMESPACE}"
                           local VCS_URL = "${DASH0_WEB_SDK_VCS_REPO_URL}"
@@ -131,7 +159,7 @@ static_resources:
                               'dash0("init",{' ..
                                 '"serviceName":"frontend-web",' ..
                                 '"serviceVersion":"' .. SVC_VER .. '",' ..
-                                '"endpoint":{"url":"' .. SDK_URL .. '","authToken":"' .. SDK_TOKEN .. '"}' ..
+                                '"endpoint":{"url":"' .. SDK_URL .. '","authToken":""}' ..
                               '});' ..
                               'dash0("addSignalAttribute","service.namespace","' .. SVC_NS .. '");' ..
                               'dash0("addSignalAttribute","vcs.repository.url.full","' .. VCS_URL .. '");' ..
@@ -301,6 +329,28 @@ static_resources:
                     socket_address:
                       address: ${JAEGER_HOST}
                       port_value: ${JAEGER_UI_PORT}
+    # Upstream cluster for the same-origin `/_dash0/*` proxy route. LOGICAL_DNS
+    # so the hostname resolves per-request (Dash0 ingest is fronted by a CDN
+    # with rotating IPs); SNI is set to the real hostname so TLS validates.
+    - name: dash0_ingest
+      type: LOGICAL_DNS
+      lb_policy: ROUND_ROBIN
+      dns_lookup_family: V4_ONLY
+      connect_timeout: 5s
+      load_assignment:
+        cluster_name: dash0_ingest
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: "${DASH0_WEB_SDK_UPSTREAM_HOST}"
+                      port_value: 443
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          sni: "${DASH0_WEB_SDK_UPSTREAM_HOST}"
 admin:
   address:
     socket_address:
