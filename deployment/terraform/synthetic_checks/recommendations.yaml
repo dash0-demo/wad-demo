@@ -1,0 +1,54 @@
+kind: Dash0SyntheticCheck
+metadata:
+  name: wad-demo-recommendations
+spec:
+  enabled: true
+  notifications:
+    channels: []
+  plugin:
+    display:
+      name: OTel demo — recommendations API
+    kind: http
+    spec:
+      assertions:
+        criticalAssertions:
+          - kind: status_code
+            spec:
+              value: "200"
+              operator: is
+          - kind: timing
+            spec:
+              type: response
+              value: 5000ms
+              operator: lte
+        degradedAssertions:
+          - kind: timing
+            spec:
+              type: response
+              value: 2000ms
+              operator: lte
+      request:
+        method: get
+        # OLJCESPC7Z is a stable product id shipped with the demo's product
+        # catalog seed (see products.json in open-telemetry/opentelemetry-demo).
+        # The frontend fans this out to the recommendation service, which in
+        # turn calls product-catalog for the recommended items.
+        url: ${frontend_url}/api/recommendations?productIds=OLJCESPC7Z
+        queryParameters: []
+        headers: []
+        redirects: follow
+        tls:
+          allowInsecure: false
+        tracing:
+          addTracingHeaders: true
+  retries:
+    kind: fixed
+    spec:
+      attempts: 3
+      delay: 1s
+  schedule:
+    interval: 5m
+    locations:
+      - de-frankfurt
+      - us-oregon
+    strategy: all_locations
