@@ -112,14 +112,20 @@ jobs:
 
       # Cluster name is hard-coded here to match `cluster_name` default in
       # deployment/terraform/variables.tf. Bump both if you rename the cluster.
-      - name: kubeconfig
+      #
+      # Tolerant of a 404: on the first apply after a `terraform destroy` (or a
+      # cluster-recreating change like Autopilot ↔ Standard), the cluster does
+      # not exist yet and `helm get manifest` calls below just write empty
+      # "before" files, which the diff script treats as everything-is-new.
+      - name: kubeconfig (pre-apply, tolerant)
         if: |
           (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
           (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
         run: |
           gcloud container clusters get-credentials wad-demo \
             --region "${{ vars.GCP_REGION }}" \
-            --project "${{ vars.GCP_PROJECT_ID }}"
+            --project "${{ vars.GCP_PROJECT_ID }}" \
+            || echo "cluster does not exist yet — pre-apply manifests will be empty"
 
       - name: capture pre-apply helm manifests
         if: |
@@ -136,6 +142,19 @@ jobs:
           (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
           (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
         run: terraform apply -auto-approve tfplan
+
+      # Re-fetch credentials after apply: on a fresh cluster the pre-apply
+      # kubeconfig step got a 404, and on any cluster-replacing apply the
+      # endpoint has changed. Strict here — apply just succeeded, so the
+      # cluster must exist.
+      - name: kubeconfig (post-apply)
+        if: |
+          (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        run: |
+          gcloud container clusters get-credentials wad-demo \
+            --region "${{ vars.GCP_REGION }}" \
+            --project "${{ vars.GCP_PROJECT_ID }}"
 
       - name: diff manifests to detect changed services
         id: diff_manifests
