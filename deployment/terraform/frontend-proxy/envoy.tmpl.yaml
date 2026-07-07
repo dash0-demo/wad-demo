@@ -131,7 +131,12 @@ static_resources:
                           -- injected server-side by Envoy, so the SDK
                           -- config carries an empty authToken and the
                           -- token never appears in the HTML.
-                          local SDK_URL = "/_dash0"
+                          --
+                          -- SDK_URL must be an ABSOLUTE URL — the SDK builds
+                          -- request URLs with `new URL(...)` which rejects
+                          -- relative paths without a base. Build the origin
+                          -- at runtime from window.location so the config
+                          -- follows whatever host the demo is served on.
                           local SVC_VER = "${DASH0_WEB_SDK_SERVICE_VERSION}"
                           local SVC_NS = "${DASH0_WEB_SDK_SERVICE_NAMESPACE}"
                           local VCS_URL = "${DASH0_WEB_SDK_VCS_REPO_URL}"
@@ -159,7 +164,7 @@ static_resources:
                               'dash0("init",{' ..
                                 '"serviceName":"frontend-web",' ..
                                 '"serviceVersion":"' .. SVC_VER .. '",' ..
-                                '"endpoint":{"url":"' .. SDK_URL .. '","authToken":""}' ..
+                                '"endpoint":{"url":window.location.origin+"/_dash0","authToken":""}' ..
                               '});' ..
                               'dash0("addSignalAttribute","service.namespace","' .. SVC_NS .. '");' ..
                               'dash0("addSignalAttribute","vcs.repository.url.full","' .. VCS_URL .. '");' ..
