@@ -1,0 +1,67 @@
+name: terraform destroy
+
+# Manual-only. Big red button that runs `terraform destroy` against the wad-demo
+# state, tearing down the whole cluster (and everything in it). Useful for
+# migrations that Terraform cannot do in a single apply — e.g. switching a GKE
+# cluster between Autopilot and Standard, which is force-new and confuses the
+# Kubernetes provider's `host = google_container_cluster.primary.endpoint`
+# reference during the plan/refresh phase. Run destroy first, then merge the
+# migration PR; the next push-to-main creates a fresh cluster.
+#
+# Guarded by a typed confirmation input so a stray click can't wipe the demo.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DESTROY to confirm. Anything else aborts.'
+        required: true
+        default: ''
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    if: github.event.inputs.confirm == 'DESTROY'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deployment/terraform
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "0"
+      TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+      TF_VAR_region: ${{ vars.GCP_REGION }}
+      TF_VAR_dash0_auth_token: ${{ secrets.DASH0_AUTH_TOKEN }}
+      TF_VAR_dash0_api_token: ${{ secrets.DASH0_API_TOKEN }}
+      TF_VAR_dash0_web_sdk_auth_token: ${{ secrets.DASH0_WEB_SDK_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: gke-gcloud-auth-plugin
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: terraform init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="prefix=wad-demo/gke"
+
+      - name: terraform destroy
+        run: terraform destroy -auto-approve
