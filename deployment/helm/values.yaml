@@ -49,6 +49,20 @@ default:
 
 components:
   frontend:
+    # Point at the dash0-demo fork of the frontend so we get the
+    # InstrumentationMiddleware fix from
+    # https://github.com/dash0-demo/opentelemetry-demo/pull/81 — the middleware
+    # now sends the 500 response itself instead of re-throwing, which stops
+    # Next.js from printing multi-line stack traces to stderr that the filelog
+    # receiver was ingesting as one severity-less LogRecord per frame.
+    #
+    # SHA-immutable tag (built by .github/workflows/dash0-build-images.yml in
+    # the fork). Bump this when landing further patches; drop the override
+    # entirely once the fix is upstream and otel_demo_chart_version has been
+    # bumped past it.
+    imageOverride:
+      repository: ghcr.io/dash0-demo/opentelemetry-demo
+      tag: 53bda34e29456c6110fcbc47524a1e873f191042-frontend
     envOverrides:
       # The demo's Next.js frontend embeds its own OpenTelemetry-JS Web SDK
       # that always registers on page load and can't be disabled from the
