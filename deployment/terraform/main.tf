@@ -1,7 +1,22 @@
 resource "google_container_cluster" "primary" {
-  name             = var.cluster_name
-  location         = var.region
-  enable_autopilot = true
+  name     = var.cluster_name
+  location = var.region
+
+  # Standard (not Autopilot). Autopilot's Warden admission webhook forbids the
+  # privileged bits the eBPF profiler DaemonSet needs — hostPID, hostPath on
+  # `/proc` + `/sys`, and Linux capabilities SYS_ADMIN/SYS_RESOURCE/SYSLOG. On
+  # Standard we control node pools ourselves and none of those constraints
+  # apply, so the profiler pods can run. Switching between Autopilot and
+  # Standard is not an in-place operation — Terraform will destroy and
+  # recreate the cluster (and every workload in it) when this changes.
+
+  # Manage node pools as separate resources so pool changes don't trigger a
+  # full cluster replacement. GKE always tries to create a default pool when
+  # the cluster is created; setting initial_node_count=1 keeps that transient
+  # pool small, and remove_default_node_pool=true tears it down immediately
+  # after the cluster is up.
+  remove_default_node_pool = true
+  initial_node_count       = 1
 
   release_channel {
     channel = var.release_channel
@@ -10,6 +25,37 @@ resource "google_container_cluster" "primary" {
   ip_allocation_policy {}
 
   deletion_protection = false
+}
+
+# Single node pool sized for the demo: Dash0 operator + its DaemonSet and
+# Deployment collectors, ~15 otel-demo microservices, the load generator
+# (50 Locust users), and the eBPF profiler DaemonSet. e2-standard-4 gives
+# 4 vCPU / 16 GiB per node. The cluster is regional, so `node_count` is
+# per-zone — with three zones in europe-west1 the default (1) yields three
+# nodes, enough headroom and enough spread for the profiler to exercise
+# multi-node scenarios.
+resource "google_container_node_pool" "primary" {
+  name       = "primary"
+  location   = var.region
+  cluster    = google_container_cluster.primary.name
+  node_count = var.gke_node_count
+
+  node_config {
+    machine_type = var.gke_machine_type
+    disk_size_gb = 50
+    disk_type    = "pd-standard"
+
+    # Least-privilege service account scopes for a demo; nothing here reads
+    # from GCP APIs beyond the standard container runtime needs.
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform",
+    ]
+  }
+
+  management {
+    auto_repair  = true
+    auto_upgrade = true
+  }
 }
 
 # Namespace hosting the Dash0 operator and the auth secret it consumes.
@@ -89,14 +135,6 @@ resource "helm_release" "dash0_operator" {
   timeout = 600
 
   values = [local.dash0_operator_values]
-
-  # GKE Autopilot allow-list synchronizer: lets the operator's pods carry
-  # the custom node-affinity keys (dash0.com/enable) and other privileged
-  # bits that Autopilot's Warden would otherwise reject.
-  set {
-    name  = "operator.gke.autopilot.enabled"
-    value = "true"
-  }
 
   set {
     name  = "operator.dash0Export.enabled"
