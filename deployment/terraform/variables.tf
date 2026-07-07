@@ -21,6 +21,18 @@ variable "release_channel" {
   default     = "REGULAR"
 }
 
+variable "gke_machine_type" {
+  description = "Machine type for the primary GKE node pool."
+  type        = string
+  default     = "e2-standard-4"
+}
+
+variable "gke_node_count" {
+  description = "Nodes per zone in the primary GKE node pool. The cluster is regional (var.region), so total nodes = gke_node_count × number of zones in the region."
+  type        = number
+  default     = 1
+}
+
 variable "otel_demo_chart_version" {
   description = "Version of the open-telemetry/opentelemetry-demo Helm chart."
   type        = string
