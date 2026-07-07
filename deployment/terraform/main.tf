@@ -131,6 +131,14 @@ resource "helm_release" "dash0_operator" {
     value = "true"
   }
 
+  # Turn on profile ingestion in the operator's collectors. The eBPF profiler
+  # DaemonSet (see ebpf-profiler.tf) exports profiles via OTLP/gRPC to the
+  # operator's node-local collector, which forwards them to Dash0.
+  set {
+    name  = "operator.profilingEnabled"
+    value = "true"
+  }
+
   depends_on = [kubernetes_secret.dash0_authorization]
 }
 
