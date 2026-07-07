@@ -188,10 +188,12 @@ resource "kubernetes_namespace" "otel_demo" {
   depends_on = [google_container_cluster.primary]
 }
 
-# Public (browser-exposed) Dash0 auth token, mounted into the frontend-proxy
-# pod via an env var and inlined at container start by envsubst into the Lua
-# HTTP filter's source. MUST be a token scoped to the wad-demo dataset with
-# Ingesting-only permission — it will be visible to anyone who views the site.
+# Dash0 auth token used by the frontend-proxy's `/_dash0/*` reverse proxy to
+# add `Authorization: Bearer <token>` to OTLP HTTP requests before forwarding
+# them upstream to Dash0's ingest. Must be a token scoped to the wad-demo
+# dataset with Ingesting-only permission — anyone who finds the same-origin
+# proxy path can post telemetry against this token, same posture as an
+# ingest-only browser token.
 resource "kubernetes_secret" "dash0_web_sdk" {
   metadata {
     name      = "dash0-web-sdk-token"
@@ -249,8 +251,12 @@ locals {
       "frontend-proxy" = {
         envOverrides = [
           {
-            name  = "DASH0_WEB_SDK_ENDPOINT_URL"
-            value = var.dash0_otlp_http_endpoint
+            # Host-only (no scheme, no port) — used by Envoy as both the
+            # upstream socket_address and the TLS SNI for the same-origin
+            # `/_dash0/*` proxy route. Derived from the OTLP HTTP endpoint
+            # so a tenant override in one place flows to both.
+            name  = "DASH0_WEB_SDK_UPSTREAM_HOST"
+            value = regex("^https?://([^/]+)", var.dash0_otlp_http_endpoint)[0]
           },
           {
             name = "DASH0_WEB_SDK_AUTH_TOKEN"
