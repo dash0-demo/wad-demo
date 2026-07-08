@@ -1,0 +1,230 @@
+[
+  {
+    "email": "larry_sergei@example.com",
+    "address": {
+      "streetAddress": "1600 Amphitheatre Parkway",
+      "zipCode": "94043",
+      "city": "Mountain View",
+      "state": "CA",
+      "country": "United States",
+      "countryCode": "US",
+      "continentCode": "NA"
+    },
+    "userCurrency": "USD",
+    "creditCard": {
+      "creditCardNumber": "4432-8015-6152-0454",
+      "creditCardExpirationMonth": 1,
+      "creditCardExpirationYear": 2039,
+      "creditCardCvv": 672
+    }
+  },
+  {
+    "email": "bill@example.com",
+    "address": {
+      "streetAddress": "One Microsoft Way",
+      "zipCode": "98052",
+      "city": "Redmond",
+      "state": "WA",
+      "country": "United States",
+      "countryCode": "US",
+      "continentCode": "NA"
+    },
+    "userCurrency": "USD",
+    "creditCard": {
+      "creditCardNumber": "4532-4243-2245-1519",
+      "creditCardExpirationMonth": 6,
+      "creditCardExpirationYear": 2033,
+      "creditCardCvv": 348
+    }
+  },
+  {
+    "email": "steve@example.com",
+    "address": {
+      "streetAddress": "1 Apple Park Way",
+      "zipCode": "95014",
+      "city": "Cupertino",
+      "state": "CA",
+      "country": "United States",
+      "countryCode": "US",
+      "continentCode": "NA"
+    },
+    "userCurrency": "USD",
+    "creditCard": {
+      "creditCardNumber": "4532-5443-3721-1518",
+      "creditCardExpirationMonth": 12,
+      "creditCardExpirationYear": 2035,
+      "creditCardCvv": 195
+    }
+  },
+  {
+    "email": "mark@example.com",
+    "address": {
+      "streetAddress": "1 Hacker Way",
+      "zipCode": "94025",
+      "city": "Menlo Park",
+      "state": "CA",
+      "country": "United States",
+      "countryCode": "US",
+      "continentCode": "NA"
+    },
+    "userCurrency": "USD",
+    "creditCard": {
+      "creditCardNumber": "4485-1129-3389-8721",
+      "creditCardExpirationMonth": 3,
+      "creditCardExpirationYear": 2034,
+      "creditCardCvv": 442
+    }
+  },
+  {
+    "email": "jeff@example.com",
+    "address": {
+      "streetAddress": "410 Terry Ave N",
+      "zipCode": "98109",
+      "city": "Seattle",
+      "state": "WA",
+      "country": "United States",
+      "countryCode": "US",
+      "continentCode": "NA"
+    },
+    "userCurrency": "USD",
+    "creditCard": {
+      "creditCardNumber": "4485-9987-6512-1338",
+      "creditCardExpirationMonth": 9,
+      "creditCardExpirationYear": 2032,
+      "creditCardCvv": 981
+    }
+  },
+  {
+    "email": "reed@example.com",
+    "address": {
+      "streetAddress": "100 Winchester Circle",
+      "zipCode": "95032",
+      "city": "Los Gatos",
+      "state": "CA",
+      "country": "United States",
+      "countryCode": "US",
+      "continentCode": "NA"
+    },
+    "userCurrency": "USD",
+    "creditCard": {
+      "creditCardNumber": "4485-8871-6612-2249",
+      "creditCardExpirationMonth": 4,
+      "creditCardExpirationYear": 2036,
+      "creditCardCvv": 615
+    }
+  },
+  {
+    "email": "tobias@example.com",
+    "address": {
+      "streetAddress": "150 Elgin Street",
+      "zipCode": "K2P 1L4",
+      "city": "Ottawa",
+      "state": "ON",
+      "country": "Canada",
+      "countryCode": "CA",
+      "continentCode": "NA"
+    },
+    "userCurrency": "CAD",
+    "creditCard": {
+      "creditCardNumber": "4485-1128-2039-1177",
+      "creditCardExpirationMonth": 7,
+      "creditCardExpirationYear": 2033,
+      "creditCardCvv": 108
+    }
+  },
+  {
+    "email": "jack@example.com",
+    "address": {
+      "streetAddress": "1355 Market Street",
+      "zipCode": "94103",
+      "city": "San Francisco",
+      "state": "CA",
+      "country": "United States",
+      "countryCode": "US",
+      "continentCode": "NA"
+    },
+    "userCurrency": "USD",
+    "creditCard": {
+      "creditCardNumber": "4485-7712-2098-6501",
+      "creditCardExpirationMonth": 11,
+      "creditCardExpirationYear": 2031,
+      "creditCardCvv": 726
+    }
+  },
+  {
+    "email": "moore@example.com",
+    "address": {
+      "streetAddress": "2200 Mission College Blvd",
+      "zipCode": "95054",
+      "city": "Santa Clara",
+      "state": "CA",
+      "country": "United States",
+      "countryCode": "US",
+      "continentCode": "NA"
+    },
+    "userCurrency": "USD",
+    "creditCard": {
+      "creditCardNumber": "4485-3389-2210-8859",
+      "creditCardExpirationMonth": 8,
+      "creditCardExpirationYear": 2037,
+      "creditCardCvv": 302
+    }
+  },
+  {
+    "email": "greta@example.com",
+    "address": {
+      "streetAddress": "Karl-Liebknecht-Straße 34",
+      "zipCode": "10178",
+      "city": "Berlin",
+      "state": "BE",
+      "country": "Germany",
+      "countryCode": "DE",
+      "continentCode": "EU"
+    },
+    "userCurrency": "EUR",
+    "creditCard": {
+      "creditCardNumber": "4485-2211-3387-9942",
+      "creditCardExpirationMonth": 2,
+      "creditCardExpirationYear": 2035,
+      "creditCardCvv": 887
+    }
+  },
+  {
+    "email": "hiro@example.com",
+    "address": {
+      "streetAddress": "6-10-1 Roppongi",
+      "zipCode": "106-6108",
+      "city": "Tokyo",
+      "state": "13",
+      "country": "Japan",
+      "countryCode": "JP",
+      "continentCode": "AS"
+    },
+    "userCurrency": "JPY",
+    "creditCard": {
+      "creditCardNumber": "4485-1120-8843-3392",
+      "creditCardExpirationMonth": 10,
+      "creditCardExpirationYear": 2034,
+      "creditCardCvv": 559
+    }
+  },
+  {
+    "email": "isabela@example.com",
+    "address": {
+      "streetAddress": "Avenida Paulista 1578",
+      "zipCode": "01310-200",
+      "city": "São Paulo",
+      "state": "SP",
+      "country": "Brazil",
+      "countryCode": "BR",
+      "continentCode": "SA"
+    },
+    "userCurrency": "BRL",
+    "creditCard": {
+      "creditCardNumber": "4485-9082-1122-3387",
+      "creditCardExpirationMonth": 5,
+      "creditCardExpirationYear": 2036,
+      "creditCardCvv": 143
+    }
+  }
+]
