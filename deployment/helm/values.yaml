@@ -84,7 +84,7 @@ components:
     #     structured log line right after).
     imageOverride:
       repository: ghcr.io/dash0-demo/opentelemetry-demo
-      tag: 8a3397b2138a3da0414f010aef487cdd5516e103-product-catalog
+      tag: 9f56c856291cb87205ad36b034df0e97b7d66801-product-catalog
     envOverrides:
       # 15 percent per-request failure across the five targeted SKUs.
       # Realistic-looking error rate for the demo — enough to trigger
