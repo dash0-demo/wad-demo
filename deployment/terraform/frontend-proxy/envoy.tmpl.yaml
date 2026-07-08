@@ -174,7 +174,20 @@ static_resources:
                               'dash0("init",{' ..
                                 '"serviceName":"frontend-web",' ..
                                 '"serviceVersion":"' .. SVC_VER .. '",' ..
-                                '"endpoint":{"url":window.location.origin+"/_dash0","authToken":""}' ..
+                                '"endpoint":{"url":window.location.origin+"/_dash0","authToken":""},' ..
+                                -- Force W3C traceparent propagation on every
+                                -- outgoing request. The SDK's "automatic
+                                -- same-origin" behavior doesn't kick in
+                                -- without an explicit propagators entry
+                                -- (verified: Playwright dump shows
+                                -- traceparent: None on every /api/* XHR
+                                -- with just the default config). Adding a
+                                -- catch-all here means every fetch/XHR the
+                                -- Web SDK instruments gets a traceparent
+                                -- header, so Envoy + Next.js can join the
+                                -- trace and Dash0 can correlate the browser
+                                -- span with the backend trace.
+                                '"propagators":[{"type":"traceparent","match":[/.*/]}]' ..
                               '});' ..
                               'dash0("addSignalAttribute","service.namespace","' .. SVC_NS .. '");' ..
                               'dash0("addSignalAttribute","vcs.repository.url.full","' .. VCS_URL .. '");' ..
