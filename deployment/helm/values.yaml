@@ -49,36 +49,26 @@ default:
 
 components:
   frontend:
-    # Point at the dash0-demo fork of the frontend so we get the
-    # InstrumentationMiddleware fix from
-    # https://github.com/dash0-demo/opentelemetry-demo/pull/81 — the middleware
-    # now sends the 500 response itself instead of re-throwing, which stops
-    # Next.js from printing multi-line stack traces to stderr that the filelog
-    # receiver was ingesting as one severity-less LogRecord per frame.
-    #
-    # SHA-immutable tag (built by .github/workflows/dash0-build-images.yml in
-    # the fork). Bump this when landing further patches; drop the override
-    # entirely once the fix is upstream and otel_demo_chart_version has been
-    # bumped past it.
+    # dash0-demo fork of the frontend. Carries two patches vs. upstream:
+    #   - InstrumentationMiddleware sends its own 500 response instead of
+    #     re-throwing (fork PR #81) so Next.js doesn't print multi-line
+    #     stack traces the filelog receiver would split.
+    #   - The built-in OpenTelemetry-JS Web SDK is deleted; @dash0/sdk-web
+    #     is imported directly by _app.tsx and configured from window.ENV
+    #     (fork PR #96). This obsoletes the Envoy Lua injection and the
+    #     `/otlp-http/*` 204 sink route on the frontend-proxy.
+    # SHA-immutable tag (built by .github/workflows/dash0-build-images.yml
+    # in the fork). Bump this when landing further patches; drop the
+    # override entirely once both patches are upstream and
+    # `otel_demo_chart_version` is bumped past them.
     imageOverride:
       repository: ghcr.io/dash0-demo/opentelemetry-demo
-      tag: 53bda34e29456c6110fcbc47524a1e873f191042-frontend
-    envOverrides:
-      # The demo's Next.js frontend embeds its own OpenTelemetry-JS Web SDK
-      # that always registers on page load and can't be disabled from the
-      # image. The chart's default endpoint (`http://localhost:8080/...`)
-      # only works with `kubectl port-forward`; from any other origin the
-      # SDK spams failing localhost POSTs and no data flows anywhere useful.
-      #
-      # We use the Dash0 Web SDK (injected by the frontend-proxy's Lua
-      # filter — see deployment/terraform/frontend-proxy/envoy.tmpl.yaml)
-      # for RUM, so redirect the demo's built-in SDK at a same-origin path
-      # that the frontend-proxy's Envoy answers with `204 No Content`. The
-      # SDK considers the batch delivered on any 2xx, so no retries and no
-      # console errors, and no duplicate `frontend-web` service data lands
-      # in Dash0 via the operator's collector.
-      - name: PUBLIC_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
-        value: /otlp-http/v1/traces
+      tag: TBD-after-fork-pr-96-merges-frontend
+    # Feeds pages/_document.tsx which inlines these into `window.ENV` for
+    # the Dash0 Web SDK's client-side init (see the fork's
+    # utils/telemetry/Dash0WebSdk.ts). Terraform passes these in via
+    # `components.frontend.envOverrides` in main.tf so per-tenant values
+    # (VCS metadata, service namespace) stay out of the image.
   flagd:
     sidecarContainers: []
     # Mount the Terraform-managed `flagd-config-override` ConfigMap under the
