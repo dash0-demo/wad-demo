@@ -281,16 +281,20 @@ locals {
   #     directly (avoids CORS + keeps the ingest token server-side).
   #     Envoy still needs the upstream host (for socket_address + TLS
   #     SNI) and the token (injected via request_headers_to_add).
+  #
+  # NOTE: PUBLIC_DASH0_WEB_SDK_ENDPOINT is intentionally NOT set here.
+  # The Dash0 Web SDK's `endpoint.url` must be an absolute URL — passing
+  # a relative path like `/_dash0` causes the SDK's `new URL(...)` to
+  # throw (see fork's utils/telemetry/Dash0WebSdk.ts, which needs the
+  # value to be truthy to skip the fallback). We rely on the fork's
+  # fallback `window.location.origin + '/_dash0'` — built at runtime
+  # from the actual browser origin — which resolves to a valid absolute
+  # URL. Only set this env var if a tenant needs a fully-qualified
+  # absolute URL override (e.g., pointing at a different host).
   otel_demo_values_overrides = yamlencode({
     components = {
       frontend = {
         envOverrides = [
-          {
-            # Same-origin reverse-proxy path — hits the frontend-proxy
-            # Envoy's `/_dash0/*` route which forwards to Dash0 ingest.
-            name  = "PUBLIC_DASH0_WEB_SDK_ENDPOINT"
-            value = "/_dash0"
-          },
           {
             name  = "PUBLIC_DASH0_WEB_SDK_SERVICE_VERSION"
             value = var.otel_demo_chart_version
