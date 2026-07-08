@@ -1,17 +1,19 @@
 # Fork of opentelemetry-demo v2.2.0 src/frontend-proxy/envoy.tmpl.yaml with a
-# Lua HTTP filter added to inject the Dash0 Web SDK <script> tag into HTML
-# responses before they reach the browser.
+# same-origin reverse-proxy route for the Dash0 Web SDK. The Web SDK itself
+# is embedded in the fork's frontend image (see
+# https://github.com/dash0-demo/opentelemetry-demo/pull/96) and reads its
+# endpoint from `window.ENV`, so no HTML injection is needed here — Envoy's
+# job is just to relay `/_dash0/*` to Dash0 ingest with the Bearer token
+# injected server-side.
 #
 # Envsubst runs against this file at container start (see the demo's
-# frontend-proxy Dockerfile ENTRYPOINT), so:
-#   - ${FOO} placeholders are expanded from the pod's environment.
-#   - Values wired from Terraform (endpoint, token, service version, VCS attrs)
-#     arrive as env vars via `components.frontend-proxy.envOverrides` in the
-#     Helm release and are inlined into the Lua source below.
+# frontend-proxy Dockerfile ENTRYPOINT), so `${FOO}` placeholders are
+# expanded from the pod's environment. Values are wired from Terraform via
+# `components.frontend-proxy.envOverrides` in the Helm release.
 #
 # When bumping otel_demo_chart_version, diff this against upstream:
 #   https://github.com/open-telemetry/opentelemetry-demo/blob/<tag>/src/frontend-proxy/envoy.tmpl.yaml
-# and reapply the Lua filter block.
+# and reapply the `/_dash0/*` route + `dash0_ingest` cluster.
 
 static_resources:
   listeners:
@@ -52,27 +54,17 @@ static_resources:
                           redirect: { path_redirect: "/loadgen/" }
                         - match: { prefix: "/loadgen/" }
                           route: { cluster: loadgen, prefix_rewrite: "/" }
-                        # `/otlp-http/*` is where the OTel demo's built-in
-                        # OpenTelemetry Web SDK (baked into the Next.js
-                        # frontend image, not something we can disable at
-                        # source) POSTs OTLP traces. We're using the Dash0
-                        # Web SDK instead (injected by the Lua filter
-                        # below), so absorb these OTLP POSTs at the proxy
-                        # — the SDK considers the batch delivered on any
-                        # 2xx, and no duplicate frontend-web service
-                        # lands in Dash0 via the operator's collector.
-                        - match: { prefix: "/otlp-http/" }
-                          direct_response: { status: 204 }
-                        # `/_dash0/*` is the same-origin proxy the injected
-                        # Dash0 Web SDK sends OTLP HTTP to (see Lua filter
-                        # below, `SDK_URL = "/_dash0"`). Sending direct to
-                        # ingress.eu-west-1.aws.dash0.com fails the CORS
-                        # preflight from an unregistered origin; going via
-                        # same-origin sidesteps CORS entirely. Envoy
-                        # rewrites the path (/_dash0/v1/traces → /v1/traces),
-                        # sets the SNI + Host header to the real hostname,
-                        # and injects the Bearer token server-side so the
-                        # public HTML never exposes it.
+                        # `/_dash0/*` is the same-origin proxy the frontend's
+                        # embedded Dash0 Web SDK POSTs OTLP HTTP to (see the
+                        # fork's utils/telemetry/Dash0WebSdk.ts and its
+                        # `PUBLIC_DASH0_WEB_SDK_ENDPOINT=/_dash0`). Sending
+                        # direct to ingress.eu-west-1.aws.dash0.com fails
+                        # the CORS preflight from an unregistered origin;
+                        # going via same-origin sidesteps CORS entirely.
+                        # Envoy rewrites the path (/_dash0/v1/traces →
+                        # /v1/traces), sets the SNI + Host header to the
+                        # real hostname, and injects the Bearer token
+                        # server-side so the public HTML never exposes it.
                         - match: { prefix: "/_dash0/" }
                           route:
                             cluster: dash0_ingest
@@ -113,93 +105,6 @@ static_resources:
                         header_delay: {}
                         percentage:
                           numerator: 100
-                  # --- Dash0 Web SDK injector ---
-                  # Rewrites text/html response bodies to insert the Dash0 Web
-                  # SDK IIFE bundle + init() call immediately before </head>.
-                  # Strips Accept-Encoding on requests so upstream returns
-                  # uncompressed HTML (LuaJIT string ops can't decode gzip).
-                  - name: envoy.filters.http.lua
-                    typed_config:
-                      "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-                      default_source_code:
-                        inline_string: |
-                          -- The SDK POSTs OTLP HTTP to <SDK_URL>/v1/traces etc.
-                          -- Using a same-origin path (proxied by the route
-                          -- above) sidesteps the CORS preflight that
-                          -- ingress.eu-west-1.aws.dash0.com rejects for
-                          -- unregistered origins. The Bearer token is
-                          -- injected server-side by Envoy, so the SDK
-                          -- config carries an empty authToken and the
-                          -- token never appears in the HTML.
-                          --
-                          -- SDK_URL must be an ABSOLUTE URL — the SDK builds
-                          -- request URLs with `new URL(...)` which rejects
-                          -- relative paths without a base. Build the origin
-                          -- at runtime from window.location so the config
-                          -- follows whatever host the demo is served on.
-                          local SVC_VER = "${DASH0_WEB_SDK_SERVICE_VERSION}"
-                          local SVC_NS = "${DASH0_WEB_SDK_SERVICE_NAMESPACE}"
-                          local VCS_URL = "${DASH0_WEB_SDK_VCS_REPO_URL}"
-                          local VCS_SHA = "${DASH0_WEB_SDK_VCS_HEAD_SHA}"
-
-                          function envoy_on_request(request_handle)
-                            request_handle:headers():replace("accept-encoding", "identity")
-                          end
-
-                          function envoy_on_response(response_handle)
-                            local headers = response_handle:headers()
-                            local ct = headers:get("content-type")
-                            if ct == nil then return end
-                            if not string.find(ct, "text/html", 1, true) then return end
-                            if headers:get("content-encoding") ~= nil then return end
-                            local body = response_handle:body(true)
-                            if body == nil then return end
-                            local length = body:length()
-                            if length == 0 then return end
-                            local s = tostring(body:getBytes(0, length))
-                            -- See https://github.com/dash0hq/dash0-sdk-web/blob/main/INSTALL.md
-                            --
-                            -- The optional `window.seed` block is injected by
-                            -- the load-generator's Playwright users (see
-                            -- deployment/terraform/loadgen/locustfile.py's
-                            -- seed_person). When present, we identify the
-                            -- user and tag Web Monitoring signals with geo
-                            -- attributes drawn from their seeded address.
-                            -- Without it, every headless-Chromium session in
-                            -- our GKE eu-west-1 pod IP range collapses to a
-                            -- single anonymous German visitor.
-                            local injection =
-                              '<script>' ..
-                              '(function(d,a,s,h,z,e,r,o){d[a]||((z=d[a]=function(){h.push(arguments)}),(z._t=new Date()),(z._v=1),(h=z._q=[]))})(window,"dash0");' ..
-                              'dash0("init",{' ..
-                                '"serviceName":"frontend-web",' ..
-                                '"serviceVersion":"' .. SVC_VER .. '",' ..
-                                '"endpoint":{"url":window.location.origin+"/_dash0","authToken":""},' ..
-                                -- Force W3C traceparent propagation on every
-                                -- outgoing request. The SDK's "automatic
-                                -- same-origin" behavior doesn't kick in
-                                -- without an explicit propagators entry
-                                -- (verified: Playwright dump shows
-                                -- traceparent: None on every /api/* XHR
-                                -- with just the default config). Adding a
-                                -- catch-all here means every fetch/XHR the
-                                -- Web SDK instruments gets a traceparent
-                                -- header, so Envoy + Next.js can join the
-                                -- trace and Dash0 can correlate the browser
-                                -- span with the backend trace.
-                                '"propagators":[{"type":"traceparent","match":[/.*/]}]' ..
-                              '});' ..
-                              'dash0("addSignalAttribute","service.namespace","' .. SVC_NS .. '");' ..
-                              'dash0("addSignalAttribute","vcs.repository.url.full","' .. VCS_URL .. '");' ..
-                              'dash0("addSignalAttribute","vcs.ref.head.revision","' .. VCS_SHA .. '");' ..
-                              'dash0("addSignalAttribute","vcs.provider.name","github");' ..
-                              '(function(){var s=window.seed;if(!s)return;if(s.location){if(s.location.countryCode)dash0("addSignalAttribute","geo.country.iso_code",s.location.countryCode);if(s.location.continentCode)dash0("addSignalAttribute","geo.continent.code",s.location.continentCode);if(s.location.locality)dash0("addSignalAttribute","geo.locality.name",s.location.locality);}if(s.email)dash0("identify",s.email,{email:s.email});})();' ..
-                              '</script>' ..
-                              '<script defer crossorigin="anonymous" src="https://unpkg.com/@dash0/sdk-web@0.18.1/dist/dash0.iife.js"></script>'
-                            local new_s, n = string.gsub(s, "</head>", injection .. "</head>", 1)
-                            if n == 0 then return end
-                            body:setBytes(new_s)
-                          end
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
