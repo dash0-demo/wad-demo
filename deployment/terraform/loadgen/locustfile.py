@@ -3,14 +3,25 @@
 # Copyright The OpenTelemetry Authors
 # SPDX-License-Identifier: Apache-2.0
 
-# Fork of opentelemetry-demo v2.2.0 src/loadgenerator/locustfile.py with the
-# `WebsiteBrowserUser` tracer reference swapped from `self.tracer` to a
-# module-level `tracer`. See the NOTE near the class definition below.
+# Fork of opentelemetry-demo v2.2.0 src/loadgenerator/locustfile.py with two
+# changes vs. upstream:
+#
+#   1. `WebsiteBrowserUser` uses a module-level `tracer` instead of
+#      `self.tracer` — see the NOTE near the class definition. Fixes an
+#      AttributeError that Locust's try/except swallows and that hides
+#      every browser task under the locust_plugins Playwright user.
+#
+#   2. Each browser task calls `seed_person(page)` to inject a persistent
+#      identity (email + country/continent/locality) into `window.seed`
+#      before page scripts run. The Envoy Lua filter (frontend-proxy)
+#      picks that up and calls dash0("identify", ...) + adds geo signal
+#      attributes on the Web SDK, so sessions in Web Monitoring aren't
+#      all anonymous and geolocated to eu-west-1.
 #
 # Mounted over the image's baked-in locustfile at container start via a
 # ConfigMap and a subPath volumeMount (see main.tf / values.yaml). When
 # bumping otel_demo_chart_version, diff this file against the matching
-# upstream tag and reapply the tracer swap.
+# upstream tag and reapply both changes.
 
 import json
 import os
@@ -269,6 +280,7 @@ if browser_traffic_enabled:
                 try:
                     page.on("console", lambda msg: print(msg.text))
                     await page.route('**/*', add_baggage_header)
+                    await seed_person(page)
                     await page.goto("/cart", wait_until="domcontentloaded")
                     await page.select_option('[name="currency_code"]', 'CHF')
                     await page.wait_for_timeout(2000)  # giving the browser time to export the traces
@@ -283,6 +295,7 @@ if browser_traffic_enabled:
                 try:
                     page.on("console", lambda msg: print(msg.text))
                     await page.route('**/*', add_baggage_header)
+                    await seed_person(page)
                     await page.goto("/", wait_until="domcontentloaded")
                     await page.click('p:has-text("Roof Binoculars")')
                     await page.wait_for_load_state("domcontentloaded")
@@ -292,6 +305,33 @@ if browser_traffic_enabled:
                     logging.info("Product added to cart successfully")
                 except Exception as e:
                     logging.error(f"Error in add to cart task: {str(e)}")
+
+
+async def seed_person(page):
+    """Inject a persistent identity into window.seed before any page script runs.
+
+    The Envoy Lua filter that injects the Dash0 Web SDK checks for window.seed
+    on init and, if present, calls dash0("identify", ...) and adds geo signal
+    attributes (country/continent/locality). Without this, every session
+    identifies as the Chromium instance running from the eu-west-1 GKE region
+    (Web Monitoring geolocates it as "Germany" for the entire fleet).
+    """
+    person = random.choice(people)
+    email = person["email"]
+    addr = person["address"]
+    # add_init_script runs BEFORE any page navigation script — so window.seed
+    # is set by the time the Envoy-injected Dash0 init snippet reads it.
+    await page.add_init_script(
+        "window.seed = {"
+        f"  email: '{email}',"
+        "  location: {"
+        f"    countryCode: '{addr.get('countryCode', '')}',"
+        f"    continentCode: '{addr.get('continentCode', '')}',"
+        f"    locality: '{addr.get('city', '').replace(chr(39), chr(92) + chr(39))}'"
+        "  }"
+        "}"
+    )
+
 
 async def add_baggage_header(route: Route, request: Request):
     existing_baggage = request.headers.get('baggage', '')

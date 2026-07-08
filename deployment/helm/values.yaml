@@ -126,7 +126,7 @@ components:
       limits:
         cpu: "2"
         memory: 3000Mi
-    # Two mounts:
+    # Three mounts:
     #   1. /dev/shm — Kubernetes defaults this tmpfs to 64 MiB, and Chromium
     #      wants more headroom to render pages. 512 MiB is safe.
     #   2. /usr/src/app/locustfile.py — the chart's default locustfile has a
@@ -134,10 +134,18 @@ components:
     #      isn't reachable from its async @task methods under the plugin's
     #      gevent+asyncio interop → AttributeError swallowed by try/except →
     #      Locust reports 10 browser users spawned but zero HTTP requests
-    #      ever reach frontend-proxy). This override swaps to a module-level
-    #      tracer. Source lives in deployment/terraform/loadgen/locustfile.py
-    #      and is delivered via the `load-generator-locustfile-override`
-    #      ConfigMap (see terraform/main.tf).
+    #      ever reach frontend-proxy). Our fork also adds seed_person(page)
+    #      calls in each browser task, which inject window.seed with a
+    #      persistent email + geo into the page so Web Monitoring sessions
+    #      differentiate by identity and country/continent rather than all
+    #      collapsing to a single anonymous German visitor (the geo of the
+    #      GKE eu-west-1 pod IP range).
+    #   3. /usr/src/app/people.json — extends the upstream 9-person set
+    #      with countryCode/continentCode fields (needed by seed_person)
+    #      and a few EU/AS/SA entries. Overlays the image's baked-in file
+    #      via subPath.
+    # Sources live in deployment/terraform/loadgen/ and are delivered via
+    # the `load-generator-locustfile-override` ConfigMap (see main.tf).
     additionalVolumes:
       - name: dshm
         emptyDir:
@@ -152,3 +160,6 @@ components:
       - name: locustfile-override
         mountPath: /usr/src/app/locustfile.py
         subPath: locustfile.py
+      - name: locustfile-override
+        mountPath: /usr/src/app/people.json
+        subPath: people.json
