@@ -70,21 +70,29 @@ components:
     # `components.frontend.envOverrides` in main.tf so per-tenant values
     # (VCS metadata, service namespace) stay out of the image.
   product-catalog:
-    # dash0-demo fork of the product-catalog service (fork PR #98). Two
-    # patches vs. upstream:
-    #   - Failure injection is now gated on a hardcoded set of five SKUs
+    # dash0-demo fork of the product-catalog service. Patches vs. upstream:
+    #   - Failure injection is gated on a hardcoded set of five SKUs
     #     (OLJCESPC7Z, L9ECAV7KIM, 6E92ZMYYFZ, 9SIQT8TOJO, HQTGWGPNH4)
     #     rather than a single one, and the actual per-request failure
     #     rate is controlled by the `PRODUCT_CATALOG_FAILURE_PERCENT`
     #     env var below (0..100, defaults to 100, values clamped).
     #     The `productCatalogFailure` feature flag stays as a simple
-    #     arm-switch: on means apply the percent; off means never fail.
+    #     arm-switch: on means apply the percent; off means never fail
+    #     (fork PR #98).
     #   - Three redundant `span.AddEvent` calls in GetProduct removed
     #     (the same info was already on `span.SetStatus` or in a
-    #     structured log line right after).
+    #     structured log line right after) (fork PR #98).
+    #   - Pre-otelconf SDK init restored so
+    #     `OTEL_EXPORTER_OTLP_ENDPOINT` is read natively — upstream's
+    #     `otelconf.NewSDK(WithContext(ctx))` returns a no-op SDK
+    #     when no `OTEL_CONFIG_FILE` is mounted (fork PR #100).
+    #   - flagd Connect RPC client instrumented with
+    #     `WithOtelInterceptor(true)` so every flag evaluation emits a
+    #     CLIENT span and product-catalog appears as a `depends on
+    #     flagd` edge in the service map (fork PR #101).
     imageOverride:
       repository: ghcr.io/dash0-demo/opentelemetry-demo
-      tag: 9f56c856291cb87205ad36b034df0e97b7d66801-product-catalog
+      tag: a08acbe12e97dd53981c935e568ffc3c33d016f7-product-catalog
     envOverrides:
       # 15 percent per-request failure across the five targeted SKUs.
       # Realistic-looking error rate for the demo — enough to trigger
