@@ -269,13 +269,46 @@ resource "kubernetes_config_map" "load_generator_locustfile" {
 }
 
 locals {
-  # Wire the Dash0 Web SDK into the demo's frontend-proxy Envoy: mount our
-  # forked envoy.tmpl.yaml over the image's baked-in one, and expose the
-  # Web-SDK-specific config (endpoint, public token, service version, VCS
-  # attributes) as pod env vars. envsubst inlines them into the Lua HTTP
-  # filter's source at container start.
+  # Frontend & frontend-proxy overrides:
+  #
+  #   - The forked frontend image (see values.yaml) embeds @dash0/sdk-web
+  #     directly and reads its config from `window.ENV`, which
+  #     pages/_document.tsx populates from PUBLIC_DASH0_WEB_SDK_* env
+  #     vars. Those env vars are set on the `frontend` component below.
+  #
+  #   - The frontend-proxy Envoy still hosts the same-origin `/_dash0/*`
+  #     reverse-proxy route so the browser SDK doesn't hit Dash0 ingest
+  #     directly (avoids CORS + keeps the ingest token server-side).
+  #     Envoy still needs the upstream host (for socket_address + TLS
+  #     SNI) and the token (injected via request_headers_to_add).
   otel_demo_values_overrides = yamlencode({
     components = {
+      frontend = {
+        envOverrides = [
+          {
+            # Same-origin reverse-proxy path — hits the frontend-proxy
+            # Envoy's `/_dash0/*` route which forwards to Dash0 ingest.
+            name  = "PUBLIC_DASH0_WEB_SDK_ENDPOINT"
+            value = "/_dash0"
+          },
+          {
+            name  = "PUBLIC_DASH0_WEB_SDK_SERVICE_VERSION"
+            value = var.otel_demo_chart_version
+          },
+          {
+            name  = "PUBLIC_DASH0_WEB_SDK_SERVICE_NAMESPACE"
+            value = kubernetes_namespace.otel_demo.metadata[0].name
+          },
+          {
+            name  = "PUBLIC_DASH0_WEB_SDK_VCS_REPO_URL"
+            value = var.github_repo_url
+          },
+          {
+            name  = "PUBLIC_DASH0_WEB_SDK_VCS_HEAD_SHA"
+            value = data.external.git_head.result.sha
+          },
+        ]
+      }
       "frontend-proxy" = {
         envOverrides = [
           {
@@ -294,22 +327,6 @@ locals {
                 key  = "token"
               }
             }
-          },
-          {
-            name  = "DASH0_WEB_SDK_SERVICE_VERSION"
-            value = var.otel_demo_chart_version
-          },
-          {
-            name  = "DASH0_WEB_SDK_SERVICE_NAMESPACE"
-            value = kubernetes_namespace.otel_demo.metadata[0].name
-          },
-          {
-            name  = "DASH0_WEB_SDK_VCS_REPO_URL"
-            value = var.github_repo_url
-          },
-          {
-            name  = "DASH0_WEB_SDK_VCS_HEAD_SHA"
-            value = data.external.git_head.result.sha
           },
         ]
         additionalVolumes = [
