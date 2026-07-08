@@ -63,7 +63,7 @@ components:
     # `otel_demo_chart_version` is bumped past them.
     imageOverride:
       repository: ghcr.io/dash0-demo/opentelemetry-demo
-      tag: TBD-after-fork-pr-96-merges-frontend
+      tag: 65b18420ea3238e824798dd1ad0f84bf5f0f3015-frontend
     # Feeds pages/_document.tsx which inlines these into `window.ENV` for
     # the Dash0 Web SDK's client-side init (see the fork's
     # utils/telemetry/Dash0WebSdk.ts). Terraform passes these in via
