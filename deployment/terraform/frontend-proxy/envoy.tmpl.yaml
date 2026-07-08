@@ -266,11 +266,36 @@ static_resources:
     # Upstream cluster for the same-origin `/_dash0/*` proxy route. LOGICAL_DNS
     # so the hostname resolves per-request (Dash0 ingest is fronted by a CDN
     # with rotating IPs); SNI is set to the real hostname so TLS validates.
+    #
+    # `common_http_protocol_options.idle_timeout` (20s) is deliberately shorter
+    # than Dash0 ingest's ~60s idle-close, so Envoy retires connections before
+    # the remote does — otherwise the browser SDK sees intermittent 503
+    # "upstream connect error / disconnect / reset before headers" whenever
+    # Envoy tries to reuse a connection the remote has already closed.
+    #
+    # `upstream_connection_options.tcp_keepalive` probes the socket every 30s
+    # so dead connections are detected proactively rather than on next reuse.
+    #
+    # Together these two knobs turn a ~50 percent sequential-request failure
+    # rate (observed: `curl … | tail`: 503 503 200 503 503 503 200 200 200 200)
+    # into essentially zero at the traffic levels the Playwright fleet drives.
     - name: dash0_ingest
       type: LOGICAL_DNS
       lb_policy: ROUND_ROBIN
       dns_lookup_family: V4_ONLY
       connect_timeout: 5s
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_config:
+            http_protocol_options: {}
+          common_http_protocol_options:
+            idle_timeout: 20s
+      upstream_connection_options:
+        tcp_keepalive:
+          keepalive_time: 30
+          keepalive_interval: 30
+          keepalive_probes: 3
       load_assignment:
         cluster_name: dash0_ingest
         endpoints:
