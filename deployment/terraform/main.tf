@@ -259,6 +259,12 @@ resource "kubernetes_config_map" "load_generator_locustfile" {
 
   data = {
     "locustfile.py" = file("${path.module}/loadgen/locustfile.py")
+    # Overlays the upstream image's baked-in people.json (used by
+    # WebsiteUser checkout tasks and now by WebsiteBrowserUser's
+    # seed_person to seed a persistent identity for the Web SDK).
+    # Extends the upstream 9-person set with EU/AS/SA entries so the
+    # Web Monitoring world map isn't a single US/DE blob.
+    "people.json" = file("${path.module}/loadgen/people.json")
   }
 }
 
