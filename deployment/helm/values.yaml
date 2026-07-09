@@ -94,12 +94,14 @@ components:
       repository: ghcr.io/dash0-demo/opentelemetry-demo
       tag: a08acbe12e97dd53981c935e568ffc3c33d016f7-product-catalog
     envOverrides:
-      # 15 percent per-request failure across the five targeted SKUs.
-      # Realistic-looking error rate for the demo — enough to trigger
-      # our product-catalog check rules and produce interesting error
-      # traces without turning the shop into a 500 machine.
+      # 50 percent per-request failure across the five targeted SKUs.
+      # Demo-visible error rate for the product-catalog service — with
+      # five of ten SKUs eligible, this yields ~25 percent demo-wide
+      # error traffic on GetProduct, which is enough to trigger our
+      # product-catalog check rules and keep error-shaped signals
+      # prominent in the traces / logs / service-map views.
       - name: PRODUCT_CATALOG_FAILURE_PERCENT
-        value: "15"
+        value: "50"
   flagd:
     sidecarContainers: []
     # Chart 0.40.9 pins flagd v0.12.9, which only exposes the
@@ -114,6 +116,26 @@ components:
     imageOverride:
       repository: ghcr.io/open-feature/flagd
       tag: v0.14.0
+    # flagd v0.13+ replaced its bespoke OTel setup with the OpenTelemetry
+    # `autoexport` package, which reads only the standard `OTEL_*` env vars.
+    # The chart still ships `FLAGD_METRICS_EXPORTER=otel` and
+    # `FLAGD_OTEL_COLLECTOR_URI=...` (pinned for v0.12.9) — those become
+    # no-ops on v0.14.0, which is why flagd stopped emitting spans / metrics
+    # after the image bump. Set the standard OTLP env vars so autoexport
+    # sends traces and metrics to the Dash0 operator's collector.
+    #
+    # `$(OTEL_COLLECTOR_NAME)` resolves against the chart's default
+    # envOverride (see the `default.envOverrides` block above), so the
+    # collector target stays in one place.
+    envOverrides:
+      - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        value: http://$(OTEL_COLLECTOR_NAME):4317
+      - name: OTEL_EXPORTER_OTLP_PROTOCOL
+        value: grpc
+      - name: OTEL_TRACES_EXPORTER
+        value: otlp
+      - name: OTEL_METRICS_EXPORTER
+        value: otlp
     # Mount the Terraform-managed `flagd-config-override` ConfigMap under the
     # `config-ro` volume instead of the chart-generated `flagd-config`. The
     # chart's init container copies `/config-ro/demo.flagd.json` into an
