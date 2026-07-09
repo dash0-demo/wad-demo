@@ -94,14 +94,14 @@ components:
       repository: ghcr.io/dash0-demo/opentelemetry-demo
       tag: a08acbe12e97dd53981c935e568ffc3c33d016f7-product-catalog
     envOverrides:
-      # 50 percent per-request failure across the five targeted SKUs.
-      # Demo-visible error rate for the product-catalog service — with
-      # five of ten SKUs eligible, this yields ~25 percent demo-wide
-      # error traffic on GetProduct, which is enough to trigger our
-      # product-catalog check rules and keep error-shaped signals
-      # prominent in the traces / logs / service-map views.
+      # 0 percent per-request failure — failure injection disabled.
+      # Set to a non-zero value (e.g. 15) to re-enable demo-visible
+      # error traffic on GetProduct across the five targeted SKUs
+      # (OLJCESPC7Z, L9ECAV7KIM, 6E92ZMYYFZ, 9SIQT8TOJO, HQTGWGPNH4).
+      # Note: the productCatalogFailure feature flag in flagd must also
+      # be "on" for any failure injection to take effect.
       - name: PRODUCT_CATALOG_FAILURE_PERCENT
-        value: "50"
+        value: "0"
   flagd:
     sidecarContainers: []
     # Chart 0.40.9 pins flagd v0.12.9, which only exposes the
