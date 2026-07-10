@@ -136,6 +136,12 @@ components:
         value: otlp
       - name: OTEL_METRICS_EXPORTER
         value: otlp
+      # Bump this value to force a flagd pod restart, which re-reads the
+      # ConfigMap via the init container and resets any UI-driven flag toggles
+      # back to the defaults baked in demo.flagd.json.
+      # Last bumped: 2026-07-10 — reset paymentFailure from 90% back to off.
+      - name: FLAGD_RESTART_MARKER
+        value: "2026-07-10"
     # Mount the Terraform-managed `flagd-config-override` ConfigMap under the
     # `config-ro` volume instead of the chart-generated `flagd-config`. The
     # chart's init container copies `/config-ro/demo.flagd.json` into an
