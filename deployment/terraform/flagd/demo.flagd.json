@@ -83,11 +83,11 @@
       "defaultVariant": "off"
     },
     "paymentFailure": {
-      "description": "Fail payment service charge requests n%",
+      "description": "Fail payment service charge requests at the given rate (0=off, 1=100%). Default off — do not enable for sustained periods; revert here to reset live state after UI toggles.",
       "state": "ENABLED",
       "variants": {
         "100%": 1,
-        "90%": 0.95,
+        "90%": 0.9,
         "75%": 0.75,
         "50%": 0.5,
         "25%": 0.25,
