@@ -8,7 +8,7 @@ spec:
       interval: 1m0s
       rules:
         - alert: 'checkoutservice: HTTP Error Rate'
-          expr: 'sum(increase({otel_metric_name="dash0.spans", service_name="checkoutservice", otel_span_status_code="ERROR"}[1m])) > $__threshold'
+          expr: 'sum by (service_name, service_namespace) (increase({otel_metric_name="dash0.spans", service_name="checkoutservice", otel_span_status_code="ERROR"}[1m])) > $__threshold'
           for: 0s
           keep_firing_for: 0s
           annotations:
@@ -16,9 +16,12 @@ spec:
             description: >-
               The number of ERROR-status spans from checkoutservice has exceeded the threshold over
               the last 1-minute window. The previous expression used http_response_status_code != "200"
-              which matched all gRPC child spans (which report status code 0 by design) and produced
-              ~280 false positives per minute. This expression uses otel_span_status_code="ERROR" to
-              count spans that actually failed. Degraded fires at 10 errors/min, Critical at 50 errors/min.
+              which matched all gRPC child spans (which carry no http_response_status_code label) and
+              produced false positives — ~35 phantom errors per minute from normal gRPC and internal
+              spans. This expression uses otel_span_status_code="ERROR" to count spans that actually
+              failed, scoped by service_name and service_namespace. Degraded fires at 10 errors/min,
+              Critical at 50 errors/min. Investigate recent deployments, downstream dependencies
+              (emailservice, paymentservice, cartservice), or abnormal request patterns.
             dash0-threshold-degraded: "10"
             dash0-threshold-critical: "50"
             dash0-enabled: "true"
