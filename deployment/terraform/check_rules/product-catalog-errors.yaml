@@ -7,17 +7,34 @@ spec:
     - name: Alerting
       interval: 1m0s
       rules:
+        # The numerator excludes spans whose status message is the failure the
+        # `productCatalogFailure` feature flag injects on purpose. Without that
+        # exclusion the rule measures the injected floor instead of the service:
+        # five of ten SKUs are eligible for injection at
+        # `PRODUCT_CATALOG_FAILURE_PERCENT` (currently 50), which pins GetProduct
+        # at ~25 percent errors and the service overall at ~11.5 percent — 23x
+        # the 0.5 critical threshold, so the check sat critical permanently and
+        # could not signal a real regression. With injected failures excluded the
+        # measured baseline is 0 percent, which is what the thresholds below were
+        # originally calibrated against.
+        #
+        # Keep the exclusion in sync with the message the fork's injection path
+        # sets on the span (see `components.product-catalog` in
+        # `deployment/helm/values.yaml`).
         - alert: 'product-catalog: High Error Rate'
-          expr: '100 * sum by (service_namespace, service_name) (rate({otel_metric_name="dash0.spans", otel_span_status_code="ERROR", service_name="product-catalog"}[5m])) / sum by (service_namespace, service_name) (rate({otel_metric_name="dash0.spans", service_name="product-catalog"}[5m])) > $__threshold'
+          expr: '100 * sum by (service_namespace, service_name) (rate({otel_metric_name="dash0.spans", otel_span_status_code="ERROR", service_name="product-catalog", otel_span_status_message!="Error: Product Catalog Fail Feature Flag Enabled"}[5m])) / sum by (service_namespace, service_name) (rate({otel_metric_name="dash0.spans", service_name="product-catalog"}[5m])) > $__threshold'
           for: 2m0s
           keep_firing_for: 0s
           annotations:
             summary: Error rate on product-catalog is elevated
             description: >-
-              The percentage of error spans from product-catalog has exceeded
-              the threshold over a 5-minute window. Degraded fires at 0.1%
-              (about 4x the normal peak), Critical fires at 0.5%. Investigate
-              recent deployments, downstream dependencies, or request patterns.
+              The percentage of unintended error spans from product-catalog has
+              exceeded the threshold over a 5-minute window. Failures injected
+              deliberately by the productCatalogFailure feature flag are
+              excluded, so this measures genuine errors only and the observed
+              baseline is 0%. Degraded fires at 0.1%, Critical fires at 0.5%.
+              Investigate recent deployments, downstream dependencies, or
+              request patterns.
             dash0-threshold-degraded: "0.1"
             dash0-threshold-critical: "0.5"
             dash0-enabled: "true"
