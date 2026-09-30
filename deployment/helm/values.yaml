@@ -218,3 +218,89 @@ components:
       - name: locustfile-override
         mountPath: /usr/src/app/people.json
         subPath: people.json
+  kafka:
+    # The broker sits permanently at ~100 percent of its memory limit. Three
+    # independent causes, all in the chart/image defaults:
+    #
+    # 1. Fixed 400 MiB heap in a 700 MiB cgroup. The chart ships
+    #    `KAFKA_HEAP_OPTS: "-Xmx400M -Xms400M"`, so 419 MB of heap is
+    #    committed at startup and never released. Add the 153 MB of non-heap
+    #    the OTel Java agent brings (84 MB Metaspace alone) plus ~78 MB of
+    #    thread stacks, direct buffers and mmap'd log indexes, and the
+    #    anonymous floor is ~654 MB — 89 percent of the 734 MB limit. That
+    #    leaves ~46 MB for page cache, so `k8s.pod.memory.usage` pins at the
+    #    limit and the kernel reclaims cache continuously.
+    #
+    # 2. JVM ergonomics picks Serial GC, because a 700 MiB container is below
+    #    the 1792 MB threshold at which the JVM selects G1. Serial GC only
+    #    collects the old generation when promotion can no longer be
+    #    accommodated: over 10 days of uptime the broker ran zero
+    #    MarkSweepCompact collections while Tenured Gen filled from 242 MB to
+    #    274 MB (97.9 percent of its 280 MB capacity). `used_after_last_gc`
+    #    stayed frozen at 195 MB — the live set measured at startup — so
+    #    roughly 79 MB of that is uncollected garbage, and every page it
+    #    touches is resident for good.
+    #
+    # 3. KRaft metadata churn from the image's own settings (see
+    #    src/kafka/Dockerfile in open-telemetry/opentelemetry-demo):
+    #    `KAFKA_METADATA_LOG_SEGMENT_MS=15000`,
+    #    `KAFKA_METADATA_MAX_RETENTION_MS=60000` and
+    #    `KAFKA_METADATA_LOG_MAX_RECORD_BYTES_BETWEEN_SNAPSHOTS=2800` (the
+    #    Kafka defaults are 7 days, 7 days and 20 MB). Combined with the
+    #    default `metadata.max.idle.interval.ms` of 500 ms, the controller
+    #    writes ~2 no-op records per second, rolls a metadata log segment
+    #    every 15 seconds, materialises a full MetadataImage snapshot every
+    #    ~90 seconds, and sweeps deletes every few seconds. That is 1.7
+    #    million records on `__cluster_metadata-0` in 10 days and ~14 MB/day
+    #    of growth in /tmp/kafka-logs — all of it garbage promoted into an old
+    #    generation that never gets collected.
+    #
+    # Note that the actual data workload is ~0.011 messages per second
+    # (checkout produces, accounting and fraud-detection consume, zero
+    # errors), so none of this is load-driven and raising the limit alone
+    # would not fix it — `memory.usage` counts reclaimable page cache and
+    # re-pins at whatever limit it is given.
+    envOverrides:
+      # Keep the 400 MiB ceiling so the collection behaviour changes without
+      # changing the worst case, but drop the committed floor to 256 MiB (the
+      # measured live set is 195 MiB) so the heap no longer reserves 419 MB of
+      # the cgroup up front. `-XX:+UseG1GC` is what Apache Kafka's own
+      # kafka-run-class.sh selects; it overrides the ergonomic fallback to
+      # Serial GC so the old generation is collected concurrently instead of
+      # filling monotonically.
+      - name: KAFKA_HEAP_OPTS
+        value: "-Xms256M -Xmx400M -XX:+UseG1GC"
+      # Roll a metadata segment hourly rather than every 15 seconds: 24 rolls
+      # a day instead of 5760, each one avoiding a fresh LogSegment,
+      # OffsetIndex, TimeIndex and ProducerStateManager allocation.
+      - name: KAFKA_METADATA_LOG_SEGMENT_MS
+        value: "3600000"
+      # Retain an hour of metadata history instead of a minute. Still tiny on
+      # disk (the node has 35 GB free) but no longer forces a delete sweep
+      # every few seconds.
+      - name: KAFKA_METADATA_MAX_RETENTION_MS
+        value: "3600000"
+      # Back to the Kafka default of 20 MB between snapshots. At the observed
+      # ~144 bytes per second of metadata that is roughly 40 hours per
+      # snapshot instead of 90 seconds, and a restart still only replays 20 MB.
+      - name: KAFKA_METADATA_LOG_MAX_RECORD_BYTES_BETWEEN_SNAPSHOTS
+        value: "20971520"
+      # Cut the no-op record stream at its source: 20x fewer metadata appends.
+      # The no-op record exists to advance the high watermark for followers,
+      # and this is a single-node KRaft quorum (`replicas: 1`,
+      # `KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093`).
+      - name: KAFKA_METADATA_MAX_IDLE_INTERVAL_MS
+        value: "10000"
+    # The chart sets only `limits.memory: 700Mi`, which Kubernetes then
+    # mirrors into requests. On GKE Standard we set both explicitly and match
+    # them (see AGENTS.md). 900Mi leaves ~290 MB for page cache and G1's
+    # remembered sets on top of the measured ~654 MB anonymous floor, instead
+    # of today's ~46 MB. Deliberately kept under 1792Mi: `-XX:+UseG1GC` above
+    # already selects the collector, so there is no reason to triple the
+    # footprint of a 0.011 messages per second broker just to cross the
+    # ergonomics threshold. Nodes currently have 10-13 GB available each.
+    resources:
+      requests:
+        memory: 900Mi
+      limits:
+        memory: 900Mi
