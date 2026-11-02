@@ -221,7 +221,7 @@ resource "kubernetes_config_map" "frontend_proxy_envoy" {
 }
 
 # Custom flagd config that replaces the ConfigMap the chart bakes from its
-# own `flagd/demo.flagd.json`. Used to bake `productCatalogFailure=on` (and
+# own `flagd/demo.flagd.json`. Used to bake `productCatalogFailure=off` (and
 # any other flag defaults we want to survive flagd pod restarts, since the
 # chart's default config is copied into an emptyDir at init and any UI toggle
 # is lost on restart).
